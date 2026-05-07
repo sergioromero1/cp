@@ -62,9 +62,11 @@
         <tr>
           <th data-col="Proyecto">Proyecto ↕</th>
           <th data-col="Cliente">Cliente ↕</th>
+          <th data-col="Razón social">Razón Social ↕</th>
           <th data-col="Tipo">Tipo ↕</th>
           <th data-col="Fuente">Fuente ↕</th>
-          <th data-col="Fecha de envío">Fecha ↕</th>
+          <th data-col="Fecha de envío">Fecha Envío ↕</th>
+          <th data-col="Fecha de último seguimiento">Últ. Seguimiento ↕</th>
           <th data-col="Valor">Valor ↕</th>
           <th data-col="Metraje">m² ↕</th>
           <th data-col="Estado">Estado</th>
@@ -129,6 +131,12 @@
             <input type="date" id="f-fecha">
           </div>
           <div class="form-group">
+            <label for="f-seguimiento">Último Seguimiento</label>
+            <input type="date" id="f-seguimiento">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
             <label for="f-estado">Estado</label>
             <select id="f-estado">
               <option value="Por definir">Por definir</option>
@@ -137,6 +145,9 @@
               <option value="Adjudicada">Adjudicada</option>
               <option value="Perdida">Perdida</option>
             </select>
+          </div>
+          <div class="form-group">
+            <!-- spacer -->
           </div>
         </div>
         <div class="form-row">

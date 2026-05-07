@@ -72,7 +72,7 @@ function parseCSV(text) {
 // ── CSV generator ──
 function toCSV() {
   if (!data.length) return '';
-  const headers = ['Fuente', 'Proyecto', 'Tipo', 'Cliente', 'Razón social', 'Fecha de envío', 'Valor', 'Metraje', 'Observación', 'Estado'];
+  const headers = ['Fuente', 'Proyecto', 'Tipo', 'Cliente', 'Razón social', 'Fecha de envío', 'Valor', 'Metraje', 'Observación', 'Estado', 'Fecha de último seguimiento'];
   const lines = [headers.join(',')];
   data.forEach(d => {
     lines.push(headers.map(h => (d[h] || '').replace(/,/g, ';')).join(','));
@@ -175,7 +175,7 @@ function getFiltered() {
 function renderTable() {
   const filtered = getFiltered();
   if (!filtered.length) {
-    tableBody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">📋</div><p>No hay cotizaciones que mostrar</p></div></td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="icon">📋</div><p>No hay cotizaciones que mostrar</p></div></td></tr>`;
     return;
   }
   tableBody.innerHTML = filtered.map(d => {
@@ -184,9 +184,11 @@ function renderTable() {
     return `<tr data-idx="${idx}">
       <td title="${d.Proyecto}">${d.Proyecto}</td>
       <td title="${d.Cliente}">${d.Cliente}</td>
+      <td title="${d['Razón social']}">${d['Razón social'] || '—'}</td>
       <td>${d.Tipo}</td>
       <td>${d.Fuente}</td>
       <td>${d['Fecha de envío'] || '—'}</td>
+      <td>${d['Fecha de último seguimiento'] || '—'}</td>
       <td>$${formatMoney(parseFloat(d.Valor) || 0)}</td>
       <td>${d.Metraje || '—'}</td>
       <td><span class="status-badge ${css}"><span class="dot"></span>${d.Estado}</span></td>
@@ -212,9 +214,11 @@ function renderMobileCards() {
       </div>
       <div class="mobile-card-body">
         <div>Cliente: <strong>${d.Cliente}</strong></div>
+        <div>Razón social: <strong>${d['Razón social'] || '—'}</strong></div>
         <div>Tipo: <strong>${d.Tipo}</strong></div>
         <div>Valor: <strong>$${formatMoney(parseFloat(d.Valor) || 0)}</strong></div>
-        <div>Fecha: <strong>${d['Fecha de envío'] || '—'}</strong></div>
+        <div>Envío: <strong>${d['Fecha de envío'] || '—'}</strong></div>
+        <div>Seguim: <strong>${d['Fecha de último seguimiento'] || '—'}</strong></div>
       </div>
     </div>`;
   }).join('');
@@ -326,6 +330,7 @@ function openModal(idx = -1) {
     $('#f-cliente').value = d.Cliente || '';
     $('#f-razon').value = d['Razón social'] || '';
     $('#f-fecha').value = d['Fecha de envío'] || '';
+    $('#f-seguimiento').value = d['Fecha de último seguimiento'] || '';
     $('#f-estado').value = d.Estado || 'Por definir';
     $('#f-valor').value = d.Valor || '';
     $('#f-metraje').value = d.Metraje || '';
@@ -336,6 +341,7 @@ function openModal(idx = -1) {
     $('#f-tipo').value = 'Peritaje Estructural';
     $('#f-estado').value = 'Por definir';
     $('#f-fecha').value = new Date().toISOString().slice(0, 10);
+    $('#f-seguimiento').value = '';
   }
 
   modalOverlay.classList.add('active');
@@ -358,7 +364,8 @@ function saveEntry() {
     Valor: $('#f-valor').value,
     Metraje: $('#f-metraje').value,
     'Observación': $('#f-obs').value.trim(),
-    Estado: $('#f-estado').value
+    Estado: $('#f-estado').value,
+    'Fecha de último seguimiento': $('#f-seguimiento').value
   };
 
   const idx = parseInt($('#edit-index').value);
