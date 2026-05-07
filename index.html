@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Seguimiento interno de cotizaciones – Funnel de conversión y gestión de proyectos">
+  <title>Cotizaciones · Seguimiento</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ── Header ── -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">C</div>
+      <h1>Cotiza<span>Track</span></h1>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" id="btn-export" title="Exportar CSV">⬇ <span class="hide-mobile">Exportar</span></button>
+      <button class="btn btn-secondary" id="btn-import" title="Importar CSV">⬆ <span class="hide-mobile">Importar</span></button>
+      <input type="file" id="file-import" accept=".csv" style="display:none">
+      <button class="btn btn-primary" id="btn-new">＋ <span class="hide-mobile">Nueva</span></button>
+    </div>
+  </header>
+
+  <!-- ── Funnel ── -->
+  <section class="funnel-section">
+    <h2>Funnel de Conversión</h2>
+    <div class="funnel-bar" id="funnel-bar"></div>
+    <div class="funnel-labels" id="funnel-labels"></div>
+  </section>
+
+  <!-- ── Stats ── -->
+  <div class="stats-grid" id="stats-grid"></div>
+
+  <!-- ── Filters ── -->
+  <div class="filter-bar">
+    <div class="search-box">
+      <span class="icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Buscar por proyecto, cliente o razón social…">
+    </div>
+    <select class="filter-select" id="filter-estado">
+      <option value="">Todos los estados</option>
+      <option value="Por definir">Por definir</option>
+      <option value="Enviada">Enviada</option>
+      <option value="En seguimiento">En seguimiento</option>
+      <option value="Adjudicada">Adjudicada</option>
+      <option value="Perdida">Perdida</option>
+    </select>
+    <select class="filter-select" id="filter-fuente">
+      <option value="">Todas las fuentes</option>
+    </select>
+    <select class="filter-select" id="filter-tipo">
+      <option value="">Todos los tipos</option>
+    </select>
+  </div>
+
+  <!-- ── Table (desktop) ── -->
+  <div class="table-container">
+    <table class="data-table" id="data-table">
+      <thead>
+        <tr>
+          <th data-col="Proyecto">Proyecto ↕</th>
+          <th data-col="Cliente">Cliente ↕</th>
+          <th data-col="Tipo">Tipo ↕</th>
+          <th data-col="Fuente">Fuente ↕</th>
+          <th data-col="Fecha de envío">Fecha ↕</th>
+          <th data-col="Valor">Valor ↕</th>
+          <th data-col="Metraje">m² ↕</th>
+          <th data-col="Estado">Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Mobile Cards ── -->
+  <div class="mobile-cards" id="mobile-cards"></div>
+
+  <!-- ── Modal: Crear/Editar ── -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Nueva Cotización</h3>
+        <button class="btn-icon" id="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-index" value="-1">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="f-fuente">Fuente</label>
+            <select id="f-fuente">
+              <option value="Referido">Referido</option>
+              <option value="Google Ads">Google Ads</option>
+              <option value="Instagram">Instagram</option>
+              <option value="Página Web">Página Web</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="f-tipo">Tipo</label>
+            <select id="f-tipo">
+              <option value="Peritaje Estructural">Peritaje Estructural</option>
+              <option value="Diseño Estructural">Diseño Estructural</option>
+              <option value="Interventoría">Interventoría</option>
+              <option value="Reforzamiento">Reforzamiento</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="f-proyecto">Proyecto</label>
+          <input type="text" id="f-proyecto" placeholder="Nombre del proyecto">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="f-cliente">Cliente</label>
+            <input type="text" id="f-cliente" placeholder="Nombre del cliente">
+          </div>
+          <div class="form-group">
+            <label for="f-razon">Razón Social</label>
+            <input type="text" id="f-razon" placeholder="Razón social">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="f-fecha">Fecha de Envío</label>
+            <input type="date" id="f-fecha">
+          </div>
+          <div class="form-group">
+            <label for="f-estado">Estado</label>
+            <select id="f-estado">
+              <option value="Por definir">Por definir</option>
+              <option value="Enviada">Enviada</option>
+              <option value="En seguimiento">En seguimiento</option>
+              <option value="Adjudicada">Adjudicada</option>
+              <option value="Perdida">Perdida</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="f-valor">Valor ($)</label>
+            <input type="number" id="f-valor" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label for="f-metraje">Metraje (m²)</label>
+            <input type="number" id="f-metraje" placeholder="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="f-obs">Observación</label>
+          <textarea id="f-obs" placeholder="Notas adicionales…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-cancel">Cancelar</button>
+        <button class="btn btn-danger" id="btn-delete" style="display:none">Eliminar</button>
+        <button class="btn btn-primary" id="btn-save">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Context Menu ── -->
+  <div class="context-menu" id="context-menu">
+    <button data-status="Por definir"><span class="dot" style="background:var(--por-definir)"></span>Por definir</button>
+    <button data-status="Enviada"><span class="dot" style="background:var(--enviada)"></span>Enviada</button>
+    <button data-status="En seguimiento"><span class="dot" style="background:var(--seguimiento)"></span>En seguimiento</button>
+    <button data-status="Adjudicada"><span class="dot" style="background:var(--adjudicada)"></span>Adjudicada</button>
+    <button data-status="Perdida"><span class="dot" style="background:var(--perdida)"></span>Perdida</button>
+  </div>
+
+  <!-- ── Toasts ── -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
