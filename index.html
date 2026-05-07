@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
   <title>Cotizaciones · Seguimiento</title>
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
 
   <!-- ── Header ── -->
@@ -16,8 +18,10 @@
       <h1>Cotiza<span>Track</span></h1>
     </div>
     <div class="header-actions">
-      <button class="btn btn-secondary" id="btn-export" title="Exportar CSV">⬇ <span class="hide-mobile">Exportar</span></button>
-      <button class="btn btn-secondary" id="btn-import" title="Importar CSV">⬆ <span class="hide-mobile">Importar</span></button>
+      <button class="btn btn-secondary" id="btn-export" title="Exportar CSV">⬇ <span
+          class="hide-mobile">Exportar</span></button>
+      <button class="btn btn-secondary" id="btn-import" title="Importar CSV">⬆ <span
+          class="hide-mobile">Importar</span></button>
       <input type="file" id="file-import" accept=".csv" style="display:none">
       <button class="btn btn-primary" id="btn-new">＋ <span class="hide-mobile">Nueva</span></button>
     </div>
@@ -97,6 +101,7 @@
               <option value="Google Ads">Google Ads</option>
               <option value="Instagram">Instagram</option>
               <option value="Página Web">Página Web</option>
+              <option value="Cliente">Cliente</option>
               <option value="Otro">Otro</option>
             </select>
           </div>
@@ -175,9 +180,11 @@
 
   <!-- ── Context Menu ── -->
   <div class="context-menu" id="context-menu">
-    <button data-status="Por definir"><span class="dot" style="background:var(--por-definir)"></span>Por definir</button>
+    <button data-status="Por definir"><span class="dot" style="background:var(--por-definir)"></span>Por
+      definir</button>
     <button data-status="Enviada"><span class="dot" style="background:var(--enviada)"></span>Enviada</button>
-    <button data-status="En seguimiento"><span class="dot" style="background:var(--seguimiento)"></span>En seguimiento</button>
+    <button data-status="En seguimiento"><span class="dot" style="background:var(--seguimiento)"></span>En
+      seguimiento</button>
     <button data-status="Adjudicada"><span class="dot" style="background:var(--adjudicada)"></span>Adjudicada</button>
     <button data-status="Perdida"><span class="dot" style="background:var(--perdida)"></span>Perdida</button>
   </div>
@@ -187,4 +194,5 @@
 
   <script src="app.js"></script>
 </body>
+
 </html>
