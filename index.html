@@ -19,6 +19,8 @@
       <h1>Cotiza<span>Track</span></h1>
     </div>
     <div class="header-actions">
+      <button class="btn btn-secondary active" id="btn-insights" title="Mostrar/ocultar análisis">📊 <span
+          class="hide-mobile">Análisis</span></button>
       <button class="btn btn-secondary" id="btn-export" title="Exportar CSV">⬇ <span
           class="hide-mobile">Exportar</span></button>
       <button class="btn btn-secondary" id="btn-import" title="Importar CSV">⬆ <span
@@ -28,15 +30,38 @@
     </div>
   </header>
 
+  <!-- ── KPIs ── -->
+  <div class="stats-grid" id="stats-grid"></div>
+
+  <!-- ── Alerta de seguimientos ── -->
+  <div class="alert-wrap" id="alert-banner"></div>
+
   <!-- ── Funnel ── -->
   <section class="funnel-section">
-    <h2>Funnel de Conversión</h2>
+    <h2>Funnel de Conversión <span class="hint">— clic en una etapa para filtrar</span></h2>
     <div class="funnel-bar" id="funnel-bar"></div>
     <div class="funnel-labels" id="funnel-labels"></div>
   </section>
 
-  <!-- ── Stats ── -->
-  <div class="stats-grid" id="stats-grid"></div>
+  <!-- ── Insights ── -->
+  <section class="insights-grid" id="insights-grid">
+    <div class="insight-card">
+      <h3>Evolución mensual</h3>
+      <div class="chart-area" id="chart-monthly"></div>
+    </div>
+    <div class="insight-card">
+      <h3>Rendimiento por fuente</h3>
+      <div class="chart-area" id="chart-fuente"></div>
+    </div>
+    <div class="insight-card">
+      <h3>Por tipo de servicio</h3>
+      <div class="chart-area" id="chart-tipo"></div>
+    </div>
+    <div class="insight-card">
+      <h3>Top clientes (adjudicado)</h3>
+      <div class="chart-area" id="chart-clientes"></div>
+    </div>
+  </section>
 
   <!-- ── Filters ── -->
   <div class="filter-bar">
@@ -58,6 +83,13 @@
     <select class="filter-select" id="filter-tipo">
       <option value="">Todos los tipos</option>
     </select>
+    <button class="btn btn-secondary btn-clear" id="btn-clear-filters" style="display:none">✕ Limpiar</button>
+  </div>
+
+  <!-- ── Resultados ── -->
+  <div class="results-bar">
+    <span id="results-count"></span>
+    <span id="results-value"></span>
   </div>
 
   <!-- ── Table (desktop) ── -->
@@ -65,16 +97,16 @@
     <table class="data-table" id="data-table">
       <thead>
         <tr>
-          <th data-col="Proyecto">Proyecto ↕</th>
-          <th data-col="Cliente">Cliente ↕</th>
-          <th data-col="Razón social">Razón Social ↕</th>
-          <th data-col="Tipo">Tipo ↕</th>
-          <th data-col="Fuente">Fuente ↕</th>
-          <th data-col="Fecha de envío">Fecha Envío ↕</th>
-          <th data-col="Fecha de último seguimiento">Últ. Seguimiento ↕</th>
-          <th data-col="Valor">Valor ↕</th>
-          <th data-col="Metraje">m² ↕</th>
-          <th data-col="Estado">Estado</th>
+          <th data-col="Proyecto">Proyecto<span class="sort-ind"></span></th>
+          <th data-col="Cliente">Cliente<span class="sort-ind"></span></th>
+          <th data-col="Razón social">Razón Social<span class="sort-ind"></span></th>
+          <th data-col="Tipo">Tipo<span class="sort-ind"></span></th>
+          <th data-col="Fuente">Fuente<span class="sort-ind"></span></th>
+          <th data-col="Fecha de envío">Envío<span class="sort-ind"></span></th>
+          <th data-col="Fecha de último seguimiento">Últ. Seguimiento<span class="sort-ind"></span></th>
+          <th data-col="Valor" class="num">Valor<span class="sort-ind"></span></th>
+          <th data-col="Metraje" class="num">m²<span class="sort-ind"></span></th>
+          <th data-col="Estado">Estado<span class="sort-ind"></span></th>
           <th>Acciones</th>
         </tr>
       </thead>
@@ -118,7 +150,7 @@
           </div>
         </div>
         <div class="form-group">
-          <label for="f-proyecto">Proyecto</label>
+          <label for="f-proyecto">Proyecto *</label>
           <input type="text" id="f-proyecto" placeholder="Nombre del proyecto">
         </div>
         <div class="form-row">
