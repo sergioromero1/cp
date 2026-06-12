@@ -3,12 +3,13 @@
 //  Ciclo de vida: cotización → adjudicación → cuentas de cobro → recaudo
 // ─────────────────────────────────────────────
 
-const ESTADOS = ['Por definir', 'Enviada', 'En seguimiento', 'Adjudicada', 'Perdida'];
-const ESTADO_CSS = { 'Por definir': 'por-definir', 'Enviada': 'enviada', 'En seguimiento': 'seguimiento', 'Adjudicada': 'adjudicada', 'Perdida': 'perdida' };
+const ESTADOS = ['Por definir', 'Enviada', 'En seguimiento', 'Adjudicada', 'Sin respuesta definitiva'];
+const ESTADO_CSS = { 'Por definir': 'por-definir', 'Enviada': 'enviada', 'En seguimiento': 'seguimiento', 'Adjudicada': 'adjudicada', 'Sin respuesta definitiva': 'perdida' };
 const ESTADOS_ACTIVOS = ['Por definir', 'Enviada', 'En seguimiento'];
 const DIAS_ALERTA = 7;        // sin seguimiento hace más de N días → alerta
 const DIAS_CRITICO = 14;      // → crítico
 const DIAS_COBRO_ALERTA = 15; // cuenta remitida sin pago hace más de N días
+const DIAS_POR_DEFINIR = 5;   // 'Por definir' sin resolverse hace más de N días
 const CSV_FILE = 'cotizaciones.csv';
 const LS_KEY = 'cotizaciones_data';
 const PALETTE = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#a29bfe', '#74b9ff'];
@@ -71,11 +72,13 @@ async function loadData() {
   }
 }
 
-// Garantiza que cada registro tenga su lista de pagos
+// Garantiza que cada registro tenga su lista de pagos y migra estados antiguos
 function normalizeData() {
   data.forEach(d => {
     if (typeof d.Pagos === 'string') d.Pagos = parsePagosStr(d.Pagos);
     if (!Array.isArray(d.Pagos)) d.Pagos = [];
+    if (d.Estado === 'Perdida') d.Estado = 'Sin respuesta definitiva';
+    if (d.Tipo === 'Reforzamiento') d.Tipo = 'Reforzamiento Estructural';
   });
 }
 
@@ -249,7 +252,7 @@ function renderList() {
 function renderStats() {
   const abiertas = data.filter(d => ESTADOS_ACTIVOS.includes(d.Estado));
   const adjudicadas = data.filter(d => d.Estado === 'Adjudicada');
-  const perdidas = data.filter(d => d.Estado === 'Perdida');
+  const perdidas = data.filter(d => d.Estado === 'Sin respuesta definitiva');
   const pendientes = data.filter(requiereSeguimiento);
 
   const valorPipeline = abiertas.reduce((s, d) => s + valor(d), 0);
@@ -292,7 +295,7 @@ function renderStats() {
     <div class="stat-card">
       <div class="label">Tasa de Éxito</div>
       <div class="value">${tasaExito}${tasaExito !== '—' ? '%' : ''}</div>
-      <div class="sub">${adjudicadas.length} ganadas / ${perdidas.length} perdidas</div>
+      <div class="sub">${adjudicadas.length} ganadas / ${perdidas.length} sin respuesta</div>
     </div>
     <div class="stat-card clickable ${pendientes.length ? 'warn' : ''} ${followUpFilter ? 'active' : ''}" data-action="followup" title="Clic para filtrar">
       <div class="label">Req. Seguimiento</div>
@@ -322,6 +325,23 @@ function renderAlert() {
         <span class="alert-icon">⚠</span>
         <span><strong>${criticas.length} cotización${criticas.length > 1 ? 'es' : ''}</strong> sin contacto hace más de ${DIAS_CRITICO} días
         ${valorRiesgo ? `— <strong>$${formatMoney(valorRiesgo)}</strong> en riesgo` : ''}</span>
+        <span class="alert-cta">Ver →</span>
+      </div>`);
+  }
+
+  // 'Por definir' estancadas hace más de N días
+  const porDefinir = data.filter(d => {
+    if (d.Estado !== 'Por definir') return false;
+    const dias = diasSinContacto(d);
+    return dias === null || dias > DIAS_POR_DEFINIR;
+  });
+  if (porDefinir.length) {
+    const valorPD = porDefinir.reduce((s, d) => s + valor(d), 0);
+    banners.push(`
+      <div class="alert-banner pordefinir" data-action="pordefinir">
+        <span class="alert-icon">⏳</span>
+        <span><strong>${porDefinir.length} cotización${porDefinir.length > 1 ? 'es' : ''} "Por definir"</strong> sin resolverse hace más de ${DIAS_POR_DEFINIR} días
+        ${valorPD ? `— <strong>$${formatMoney(valorPD)}</strong> esperando decisión` : ''}</span>
         <span class="alert-cta">Ver →</span>
       </div>`);
   }
@@ -449,7 +469,7 @@ function renderChartFuente() {
     fuentes[f].n++;
     fuentes[f].valor += valor(d);
     if (d.Estado === 'Adjudicada') { fuentes[f].ganadas++; fuentes[f].valorGanado += valor(d); }
-    if (d.Estado === 'Perdida') { fuentes[f].perdidas++; }
+    if (d.Estado === 'Sin respuesta definitiva') { fuentes[f].perdidas++; }
   });
 
   const keys = Object.keys(fuentes).sort((a, b) => fuentes[b].valor - fuentes[a].valor);
@@ -461,7 +481,7 @@ function renderChartFuente() {
     const decididas = f.ganadas + f.perdidas;
     const conv = decididas > 0 ? Math.round((f.ganadas / decididas) * 100) : null;
     const convClass = conv === null ? '' : conv >= 60 ? 'good' : conv >= 30 ? 'mid' : 'bad';
-    return `<div class="hbar-row" title="${esc(k)}: ${f.n} cotizaciones · $${formatMoney(f.valor)} · ${f.ganadas} ganadas, ${f.perdidas} perdidas">
+    return `<div class="hbar-row" title="${esc(k)}: ${f.n} cotizaciones · $${formatMoney(f.valor)} · ${f.ganadas} ganadas, ${f.perdidas} sin respuesta">
       <div class="hbar-head">
         <span class="hbar-name">${esc(k)}</span>
         <span class="hbar-meta">${f.n} cot. · $${formatMoneyShort(f.valor)}
@@ -938,6 +958,11 @@ function bindEvents() {
       switchView('cotizaciones');
       followUpFilter = true;
       renderStats(); renderList(); scrollToTable();
+    } else if (action === 'pordefinir') {
+      switchView('cotizaciones');
+      followUpFilter = false;
+      $('#filter-estado').value = 'Por definir';
+      renderStats(); renderFunnel(); renderList(); scrollToTable();
     } else if (action === 'cobros-vencidos') {
       cobroFilter = 'en-cobro'; renderCobros(); switchView('cobros');
     } else if (action === 'cobros-sincuenta') {
