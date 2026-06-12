@@ -1317,6 +1317,44 @@ body {
   font-weight: 600;
 }
 
+/* ── Retenciones ── */
+.hito-chip.ret { background: rgba(253,203,110,0.15); color: var(--seguimiento); }
+
+.ret-nota { color: var(--seguimiento); }
+
+.cartera-nota {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.72rem;
+  color: var(--seguimiento);
+}
+
+/* Confirmación inline de pago (valor recibido) */
+.pay-confirm {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.pay-recibido {
+  width: 120px;
+  padding: 0.3rem 0.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--adjudicada);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.72rem;
+}
+
+.pay-recibido:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0,184,148,0.15);
+}
+
+.pago-dates .p-recibido { width: 110px; }
+
 /* ── Responsive cobros ── */
 @media (max-width: 768px) {
   .view-tabs { padding: 0.75rem 1rem 0; }
@@ -1324,4 +1362,5 @@ body {
   .cobros-grid { grid-template-columns: 1fr; }
   .hito-row { flex-wrap: wrap; }
   .pago-dates input { width: 125px; }
+  .pay-recibido { width: 100px; }
 }

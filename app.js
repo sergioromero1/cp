@@ -29,6 +29,7 @@ let followUpFilter = false; // filtro especial: solo cotizaciones que requieren 
 let view = 'cotizaciones';  // 'cotizaciones' | 'cobros'
 let cobroFilter = '';       // '' | 'sin-cuentas' | 'por-remitir' | 'en-cobro' | 'cobrado'
 let modalPagos = [];        // copia de trabajo de los hitos en el modal
+let payingPago = null;      // 'idx:pidx' del hito cuyo pago se está confirmando (input de valor recibido)
 
 // ── DOM refs ──
 const $ = (s) => document.querySelector(s);
@@ -115,15 +116,15 @@ function toCSV() {
 function parsePagosStr(str) {
   if (!str) return [];
   return str.split('|').filter(Boolean).map(p => {
-    const [concepto = '', valor = '', remitida = '', pagada = ''] = p.split('~');
-    return { concepto, valor, remitida, pagada };
+    const [concepto = '', valor = '', remitida = '', pagada = '', recibido = ''] = p.split('~');
+    return { concepto, valor, remitida, pagada, recibido };
   });
 }
 
 function pagosToStr(pagos) {
   if (!Array.isArray(pagos) || !pagos.length) return '';
   return pagos.map(p =>
-    [p.concepto, p.valor, p.remitida, p.pagada].map(v => String(v || '').replace(/[|~,]/g, ' ')).join('~')
+    [p.concepto, p.valor, p.remitida, p.pagada, p.recibido].map(v => String(v || '').replace(/[|~,]/g, ' ')).join('~')
   ).join('|');
 }
 
@@ -178,6 +179,19 @@ function esc(s) {
 function valor(d) { return parseFloat(d.Valor) || 0; }
 function valorPago(p) { return parseFloat(p.valor) || 0; }
 
+// Valor que realmente llegó: si no se indicó, se asume el valor completo de la cuenta
+function recibidoPago(p) {
+  if (!p.pagada) return 0;
+  const r = parseFloat(p.recibido);
+  return (p.recibido === '' || p.recibido == null || isNaN(r)) ? valorPago(p) : r;
+}
+
+// Diferencia entre lo facturado y lo recibido (retefuente, ICA, etc.)
+function retencionPago(p) {
+  if (!p.pagada) return 0;
+  return Math.max(valorPago(p) - recibidoPago(p), 0);
+}
+
 // ─────────────────────────────────────────────
 //  Lógica de cobros
 // ─────────────────────────────────────────────
@@ -192,20 +206,21 @@ function pagoEstado(p) {
 function cobroResumen(d) {
   const pagos = d.Pagos || [];
   const total = valor(d);
-  let cobrado = 0, remitido = 0, porRemitir = 0, nPagados = 0;
+  let cobrado = 0, recibido = 0, remitido = 0, porRemitir = 0, nPagados = 0;
   pagos.forEach(p => {
     const v = valorPago(p);
     const e = pagoEstado(p);
-    if (e === 'pagada') { cobrado += v; nPagados++; }
+    if (e === 'pagada') { cobrado += v; recibido += recibidoPago(p); nPagados++; }
     else if (e === 'remitida') remitido += v;
     else porRemitir += v;
   });
+  const retenciones = Math.max(cobrado - recibido, 0);
   let estado;
   if (!pagos.length) estado = 'sin-cuentas';
   else if (nPagados === pagos.length) estado = 'cobrado';
   else if (remitido > 0) estado = 'en-cobro';
   else estado = 'por-remitir';
-  return { pagos, total, cobrado, remitido, porRemitir, nPagados, nHitos: pagos.length, estado };
+  return { pagos, total, cobrado, recibido, retenciones, remitido, porRemitir, nPagados, nHitos: pagos.length, estado };
 }
 
 // ── Render everything ──
@@ -242,11 +257,12 @@ function renderStats() {
   const decididas = adjudicadas.length + perdidas.length;
   const tasaExito = decididas > 0 ? ((adjudicadas.length / decididas) * 100).toFixed(0) : '—';
 
-  let cobrado = 0, remitido = 0;
+  let cobrado = 0, remitido = 0, retenciones = 0;
   adjudicadas.forEach(d => {
     const r = cobroResumen(d);
     cobrado += r.cobrado;
     remitido += r.remitido;
+    retenciones += r.retenciones;
   });
   const porCobrar = Math.max(valorAdj - cobrado, 0);
 
@@ -269,7 +285,9 @@ function renderStats() {
     <div class="stat-card clickable" data-action="cobros" title="Clic para ver cobros">
       <div class="label">Cobrado</div>
       <div class="value win">$${formatMoney(cobrado)}</div>
-      <div class="sub">${valorAdj ? Math.round((cobrado / valorAdj) * 100) + '% del adjudicado' : 'sin adjudicados'}</div>
+      <div class="sub">${retenciones
+        ? `neto recibido $${formatMoneyShort(cobrado - retenciones)} · ret. $${formatMoneyShort(retenciones)}`
+        : (valorAdj ? Math.round((cobrado / valorAdj) * 100) + '% del adjudicado' : 'sin adjudicados')}</div>
     </div>
     <div class="stat-card">
       <div class="label">Tasa de Éxito</div>
@@ -530,11 +548,12 @@ function renderChartCartera() {
   const valorAdj = adjudicadas.reduce((s, d) => s + valor(d), 0);
   if (!valorAdj) { el.innerHTML = '<div class="chart-empty">Aún no hay valor adjudicado</div>'; return; }
 
-  let cobrado = 0, remitido = 0;
+  let cobrado = 0, remitido = 0, retenciones = 0;
   adjudicadas.forEach(d => {
     const r = cobroResumen(d);
     cobrado += r.cobrado;
     remitido += r.remitido;
+    retenciones += r.retenciones;
   });
   const porFacturar = Math.max(valorAdj - cobrado - remitido, 0);
   const total = cobrado + remitido + porFacturar || 1;
@@ -557,6 +576,7 @@ function renderChartCartera() {
         <span class="legend-name">${s.label}</span>
         <span class="legend-val">$${formatMoneyShort(s.valor)} · ${Math.round((s.valor / total) * 100)}%</span>
       </div>`).join('')}
+      ${retenciones ? `<div class="cartera-nota">Del cobrado, $${formatMoney(retenciones)} fueron retenciones — neto recibido $${formatMoney(cobrado - retenciones)}</div>` : ''}
     </div>`;
 }
 
@@ -640,7 +660,7 @@ function cobroCell(d) {
   const r = cobroResumen(d);
   if (r.estado === 'sin-cuentas') return `<span class="seg-badge seg-alerta">sin cuenta</span>`;
   const pct = r.total ? Math.min(Math.round((r.cobrado / r.total) * 100), 100) : (r.nPagados === r.nHitos ? 100 : 0);
-  return `<div class="mini-cobro" title="Cobrado $${formatMoney(r.cobrado)} de $${formatMoney(r.total)} · ${r.nPagados}/${r.nHitos} cuentas pagadas">
+  return `<div class="mini-cobro" title="Cobrado $${formatMoney(r.cobrado)} de $${formatMoney(r.total)} · ${r.nPagados}/${r.nHitos} cuentas pagadas${r.retenciones ? ` · neto recibido $${formatMoney(r.recibido)} (ret. $${formatMoney(r.retenciones)})` : ''}">
     <div class="mini-track"><div class="mini-fill" style="width:${pct}%"></div></div>
     <span class="mini-label">${pct}%</span>
   </div>`;
@@ -736,9 +756,19 @@ function renderCobros() {
         const dias = daysSince(p.remitida);
         const vencida = (dias ?? 0) > DIAS_COBRO_ALERTA;
         estadoHtml = `<span class="hito-chip remitida ${vencida ? 'vencida' : ''}" title="Remitida el ${formatDate(p.remitida)}">Remitida ${relTime(dias)}</span>`;
-        accion = `<button class="btn-mini ok" data-action="pagar" data-idx="${idx}" data-pidx="${i}" title="Marcar como pagada hoy">✓ Pagada</button>`;
+        if (payingPago === `${idx}:${i}`) {
+          accion = `<span class="pay-confirm">
+            <input type="number" class="pay-recibido" value="${valorPago(p) || ''}" placeholder="Valor recibido" title="Valor que llegó realmente (después de retenciones)">
+            <button class="btn-mini ok" data-action="confirmar-pago" data-idx="${idx}" data-pidx="${i}" title="Confirmar pago con el valor recibido">✓</button>
+            <button class="btn-mini" data-action="cancelar-pago" title="Cancelar">✕</button>
+          </span>`;
+        } else {
+          accion = `<button class="btn-mini ok" data-action="pagar" data-idx="${idx}" data-pidx="${i}" title="Registrar pago (podrás indicar el valor recibido)">✓ Pagada</button>`;
+        }
       } else {
-        estadoHtml = `<span class="hito-chip pagada" title="Pagada el ${formatDate(p.pagada)}">✓ Pagada ${formatDate(p.pagada)}</span>`;
+        const ret = retencionPago(p);
+        estadoHtml = `<span class="hito-chip pagada" title="Pagada el ${formatDate(p.pagada)} · recibido $${formatMoney(recibidoPago(p))}">✓ Pagada ${formatDate(p.pagada)}</span>`
+          + (ret ? `<span class="hito-chip ret" title="Recibido $${formatMoney(recibidoPago(p))} de $${formatMoney(valorPago(p))} facturados">ret. $${formatMoneyShort(ret)}</span>` : '');
       }
       return `<div class="hito-row ${e}">
         <span class="hito-concepto" title="${esc(p.concepto)}">${esc(p.concepto) || 'Cuenta de cobro'}</span>
@@ -766,7 +796,7 @@ function renderCobros() {
           <div class="cobro-fill" style="width:${pct}%"></div>
           <div class="cobro-fill-remitido" style="width:${r.total ? Math.min(((r.cobrado + r.remitido) / r.total) * 100, 100) : 0}%"></div>
         </div>
-        <span class="cobro-pct">${pct}% cobrado · $${formatMoneyShort(r.cobrado)} de $${formatMoneyShort(r.total)}</span>
+        <span class="cobro-pct">${pct}% cobrado · $${formatMoneyShort(r.cobrado)} de $${formatMoneyShort(r.total)}${r.retenciones ? ` · neto recibido $${formatMoneyShort(r.recibido)} <span class="ret-nota">(ret. $${formatMoneyShort(r.retenciones)})</span>` : ''}</span>
       </div>
       <div class="cobro-hitos">
         ${hitos || '<div class="hito-empty">Sin cuentas de cobro registradas</div>'}
@@ -853,7 +883,7 @@ function bindEvents() {
 
   // Hitos en el modal
   $('#btn-add-pago').addEventListener('click', () => {
-    modalPagos.push({ concepto: '', valor: '', remitida: '', pagada: '' });
+    modalPagos.push({ concepto: '', valor: '', remitida: '', pagada: '', recibido: '' });
     renderModalPagos();
     const rows = document.querySelectorAll('#pagos-list .pago-row');
     const last = rows[rows.length - 1];
@@ -864,7 +894,7 @@ function bindEvents() {
     const row = e.target.closest('.pago-row');
     if (!row) return;
     const i = parseInt(row.dataset.pidx);
-    const map = { 'p-concepto': 'concepto', 'p-valor': 'valor', 'p-remitida': 'remitida', 'p-pagada': 'pagada' };
+    const map = { 'p-concepto': 'concepto', 'p-valor': 'valor', 'p-remitida': 'remitida', 'p-pagada': 'pagada', 'p-recibido': 'recibido' };
     for (const cls in map) {
       if (e.target.classList.contains(cls)) { modalPagos[i][map[cls]] = e.target.value; break; }
     }
@@ -929,7 +959,7 @@ function bindEvents() {
         const concepto = card.querySelector('.add-concepto').value.trim();
         const vlr = card.querySelector('.add-valor').value;
         if (!concepto && !vlr) { toast('Indica concepto o valor de la cuenta', true); return; }
-        data[idx].Pagos.push({ concepto, valor: vlr, remitida: '', pagada: '' });
+        data[idx].Pagos.push({ concepto, valor: vlr, remitida: '', pagada: '', recibido: '' });
         saveData(); render();
         toast('Cuenta de cobro agregada');
       } else if (action === 'remitir') {
@@ -937,9 +967,22 @@ function bindEvents() {
         saveData(); render();
         toast('Cuenta marcada como remitida hoy');
       } else if (action === 'pagar') {
-        data[idx].Pagos[parseInt(btn.dataset.pidx)].pagada = hoy();
+        payingPago = `${idx}:${btn.dataset.pidx}`;
+        renderCobros();
+        const input = cobrosView.querySelector('.pay-recibido');
+        if (input) { input.focus(); input.select(); }
+      } else if (action === 'confirmar-pago') {
+        const pago = data[idx].Pagos[parseInt(btn.dataset.pidx)];
+        const input = btn.closest('.pay-confirm').querySelector('.pay-recibido');
+        pago.pagada = hoy();
+        pago.recibido = input.value;
+        payingPago = null;
         saveData(); render();
-        toast('💰 Pago registrado');
+        const ret = retencionPago(pago);
+        toast(ret ? `💰 Pago registrado · retención de $${formatMoney(ret)}` : '💰 Pago registrado');
+      } else if (action === 'cancelar-pago') {
+        payingPago = null;
+        renderCobros();
       } else if (action === 'delpago') {
         if (confirm('¿Eliminar esta cuenta de cobro?')) {
           data[idx].Pagos.splice(parseInt(btn.dataset.pidx), 1);
@@ -954,12 +997,17 @@ function bindEvents() {
     if (head) openModal(parseInt(head.dataset.idx));
   });
 
-  // Enter en el alta rápida de hitos = agregar
+  // Enter en el alta rápida de hitos = agregar; Enter en valor recibido = confirmar pago
   cobrosView.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && payingPago) { payingPago = null; renderCobros(); return; }
     if (e.key !== 'Enter') return;
     if (e.target.classList.contains('add-concepto') || e.target.classList.contains('add-valor')) {
       e.preventDefault();
       const btn = e.target.closest('.hito-add').querySelector('[data-action="addpago"]');
+      if (btn) btn.click();
+    } else if (e.target.classList.contains('pay-recibido')) {
+      e.preventDefault();
+      const btn = e.target.closest('.pay-confirm').querySelector('[data-action="confirmar-pago"]');
       if (btn) btn.click();
     }
   });
@@ -1097,6 +1145,7 @@ function renderModalPagos() {
         <div class="pago-dates">
           <label>Remitida <input type="date" class="p-remitida" value="${esc(p.remitida)}"></label>
           <label>Pagada <input type="date" class="p-pagada" value="${esc(p.pagada)}"></label>
+          <label>Recibido $ <input type="number" class="p-recibido" value="${esc(p.recibido)}" placeholder="= valor" title="Valor que llegó realmente (si hubo retenciones). Vacío = valor completo"></label>
           <span class="hito-chip ${pagoEstado(p)}">${{ pendiente: 'Por remitir', remitida: 'Remitida', pagada: '✓ Pagada' }[pagoEstado(p)]}</span>
         </div>
       </div>`).join('');
@@ -1110,6 +1159,7 @@ function updatePagosSummary() {
   const totalHitos = modalPagos.reduce((s, p) => s + valorPago(p), 0);
   const valorProy = parseFloat($('#f-valor').value) || 0;
   const cobrado = modalPagos.filter(p => p.pagada).reduce((s, p) => s + valorPago(p), 0);
+  const retenciones = modalPagos.reduce((s, p) => s + retencionPago(p), 0);
   let txt = `Total en cuentas: $${formatMoney(totalHitos)}`;
   if (valorProy) {
     const diff = valorProy - totalHitos;
@@ -1118,6 +1168,7 @@ function updatePagosSummary() {
       : ` · excede el valor del proyecto en $${formatMoney(-diff)}`;
   }
   if (cobrado) txt += ` · cobrado $${formatMoney(cobrado)}`;
+  if (retenciones) txt += ` · retenciones $${formatMoney(retenciones)} (neto $${formatMoney(cobrado - retenciones)})`;
   summary.textContent = txt;
 }
 
