@@ -952,3 +952,376 @@ body {
   filter: brightness(1.15);
   transform: translateY(-2px);
 }
+
+/* ═════════════════════════════════════════════
+   Ciclo de cobros
+   ═════════════════════════════════════════════ */
+
+.view-hidden { display: none !important; }
+
+/* ── Tabs de vista ── */
+.view-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem 2rem 0;
+}
+
+.view-tab {
+  padding: 0.6rem 1.3rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.view-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.view-tab.active {
+  background: linear-gradient(135deg, var(--accent), #7c6cf0);
+  border-color: transparent;
+  color: #fff;
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--warn);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.alert-banner.cobro { border-color: rgba(9,132,227,0.4); background: rgba(9,132,227,0.08); }
+.alert-banner.cobro:hover { background: rgba(9,132,227,0.15); }
+.alert-banner.cobro .alert-icon, .alert-banner.cobro .alert-cta { color: var(--enviada); }
+
+/* ── Vista Cobros ── */
+.cobros-view { padding: 1.25rem 2rem 2rem; }
+
+.cobro-filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.chip {
+  padding: 0.4rem 0.9rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.chip span { color: var(--text-muted); font-size: 0.7rem; }
+.chip:hover { background: var(--bg-hover); color: var(--text-primary); }
+.chip.active { border-color: var(--accent); color: var(--accent-light); background: rgba(108,92,231,0.1); }
+.chip.active span { color: var(--accent-light); }
+
+.cobros-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 1rem;
+}
+
+.cobro-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.2rem;
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.cobro-card:hover { box-shadow: var(--shadow); }
+.cobro-card.estado-cobrado { border-color: rgba(0,184,148,0.35); }
+.cobro-card.estado-sin-cuentas { border-color: rgba(225,112,85,0.35); }
+
+.cobro-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.cobro-head-info h4 { font-size: 0.92rem; font-weight: 700; line-height: 1.3; }
+.cobro-head:hover h4 { color: var(--accent-light); }
+.cobro-cliente { font-size: 0.75rem; color: var(--text-secondary); }
+
+.cobro-head-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.cobro-valor { font-size: 0.95rem; font-weight: 800; }
+
+.cobro-estado-chip {
+  padding: 0.18rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cobro-estado-chip.sin-cuentas { background: rgba(225,112,85,0.15); color: var(--warn); }
+.cobro-estado-chip.por-remitir { background: rgba(139,143,163,0.15); color: var(--text-secondary); }
+.cobro-estado-chip.en-cobro { background: rgba(9,132,227,0.15); color: var(--enviada); }
+.cobro-estado-chip.cobrado { background: rgba(0,184,148,0.15); color: var(--adjudicada); }
+
+/* Barra de progreso del recaudo */
+.cobro-progress { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.cobro-track {
+  position: relative;
+  height: 10px;
+  background: var(--bg-primary);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.cobro-fill-remitido {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(9,132,227,0.45);
+  border-radius: 5px;
+}
+
+.cobro-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--adjudicada);
+  border-radius: 5px;
+  z-index: 1;
+  transition: width 0.5s ease;
+}
+
+.cobro-pct { font-size: 0.72rem; color: var(--text-secondary); }
+
+/* Hitos */
+.cobro-hitos { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.hito-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+}
+
+.hito-row.pagada { opacity: 0.75; }
+
+.hito-concepto {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.hito-valor { font-weight: 700; white-space: nowrap; }
+
+.hito-chip {
+  padding: 0.15rem 0.55rem;
+  border-radius: 10px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.hito-chip.pendiente { background: rgba(139,143,163,0.15); color: var(--text-secondary); }
+.hito-chip.remitida { background: rgba(9,132,227,0.15); color: var(--enviada); }
+.hito-chip.remitida.vencida { background: rgba(214,48,49,0.16); color: #ff7675; }
+.hito-chip.pagada { background: rgba(0,184,148,0.15); color: var(--adjudicada); }
+
+.hito-actions { display: inline-flex; gap: 0.3rem; flex-shrink: 0; }
+
+.btn-mini {
+  padding: 0.3rem 0.6rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.btn-mini:hover { background: var(--bg-hover); color: var(--text-primary); }
+.btn-mini.ok { border-color: rgba(0,184,148,0.4); color: var(--adjudicada); }
+.btn-mini.ok:hover { background: rgba(0,184,148,0.12); }
+.btn-mini.del { padding: 0.3rem 0.45rem; }
+.btn-mini.del:hover { border-color: rgba(214,48,49,0.5); color: #ff7675; }
+.btn-mini.add { border-color: var(--accent); color: var(--accent-light); }
+.btn-mini.add:hover { background: rgba(108,92,231,0.12); }
+
+.hito-empty, .hito-resto {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  padding: 0.35rem 0.2rem;
+}
+
+.hito-resto { color: var(--seguimiento); }
+
+/* Alta rápida de hito */
+.hito-add {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.hito-add input {
+  padding: 0.45rem 0.7rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.76rem;
+  min-width: 0;
+}
+
+.hito-add .add-concepto { flex: 1; }
+.hito-add .add-valor { width: 110px; }
+
+.hito-add input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── Cobro en tabla (mini progreso) ── */
+.mini-cobro {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.mini-track {
+  width: 56px;
+  height: 6px;
+  background: var(--bg-primary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mini-fill { height: 100%; background: var(--adjudicada); border-radius: 3px; }
+.mini-label { font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); }
+
+/* ── Cartera (stacked bar) ── */
+.stack-bar {
+  display: flex;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  gap: 2px;
+  margin-bottom: 0.9rem;
+}
+
+.stack-seg { min-width: 4px; transition: var(--transition); }
+.stack-seg:hover { filter: brightness(1.2); }
+
+.stack-legend .legend-row { margin-bottom: 0.5rem; }
+
+/* ── Hitos en el modal ── */
+.pagos-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem;
+  background: rgba(108,92,231,0.04);
+}
+
+.pagos-empty {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0.4rem 0.1rem 0.7rem;
+}
+
+.pago-row {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.pago-main {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.pago-main .p-concepto { flex: 1; min-width: 0; }
+.pago-main .p-valor { width: 130px; }
+
+.pago-dates {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.pago-dates label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.pago-dates input { width: 140px; padding: 0.4rem 0.6rem; font-size: 0.78rem; }
+.pago-dates .hito-chip { margin-bottom: 0.45rem; }
+
+.btn-add-pago { margin-top: 0.2rem; padding: 0.45rem 0.9rem; font-size: 0.78rem; }
+
+.pagos-summary {
+  margin-top: 0.6rem;
+  font-size: 0.74rem;
+  color: var(--accent-light);
+  font-weight: 600;
+}
+
+/* ── Responsive cobros ── */
+@media (max-width: 768px) {
+  .view-tabs { padding: 0.75rem 1rem 0; }
+  .cobros-view { padding: 1rem; }
+  .cobros-grid { grid-template-columns: 1fr; }
+  .hito-row { flex-wrap: wrap; }
+  .pago-dates input { width: 125px; }
+}

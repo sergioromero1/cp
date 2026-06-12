@@ -1,22 +1,34 @@
 // ─────────────────────────────────────────────
 //  CotizaTrack – App Logic
+//  Ciclo de vida: cotización → adjudicación → cuentas de cobro → recaudo
 // ─────────────────────────────────────────────
 
 const ESTADOS = ['Por definir', 'Enviada', 'En seguimiento', 'Adjudicada', 'Perdida'];
 const ESTADO_CSS = { 'Por definir': 'por-definir', 'Enviada': 'enviada', 'En seguimiento': 'seguimiento', 'Adjudicada': 'adjudicada', 'Perdida': 'perdida' };
 const ESTADOS_ACTIVOS = ['Por definir', 'Enviada', 'En seguimiento'];
-const DIAS_ALERTA = 7;   // sin seguimiento hace más de N días → alerta
-const DIAS_CRITICO = 14; // → crítico
+const DIAS_ALERTA = 7;        // sin seguimiento hace más de N días → alerta
+const DIAS_CRITICO = 14;      // → crítico
+const DIAS_COBRO_ALERTA = 15; // cuenta remitida sin pago hace más de N días
 const CSV_FILE = 'cotizaciones.csv';
 const LS_KEY = 'cotizaciones_data';
 const PALETTE = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#a29bfe', '#74b9ff'];
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+const COBRO_LABEL = {
+  'sin-cuentas': 'Sin cuenta',
+  'por-remitir': 'Por remitir',
+  'en-cobro': 'En cobro',
+  'cobrado': 'Cobrado'
+};
 
 let data = [];
 let sortCol = 'Fecha de envío';
 let sortAsc = false;
 let contextIdx = -1;
 let followUpFilter = false; // filtro especial: solo cotizaciones que requieren seguimiento
+let view = 'cotizaciones';  // 'cotizaciones' | 'cobros'
+let cobroFilter = '';       // '' | 'sin-cuentas' | 'por-remitir' | 'en-cobro' | 'cobrado'
+let modalPagos = [];        // copia de trabajo de los hitos en el modal
 
 // ── DOM refs ──
 const $ = (s) => document.querySelector(s);
@@ -28,6 +40,7 @@ const statsGrid = $('#stats-grid');
 const modalOverlay = $('#modal-overlay');
 const contextMenu = $('#context-menu');
 const toastContainer = $('#toast-container');
+const cobrosView = $('#cobros-view');
 
 // ── Init ──
 document.addEventListener('DOMContentLoaded', async () => {
@@ -41,6 +54,7 @@ async function loadData() {
   const stored = localStorage.getItem(LS_KEY);
   if (stored) {
     data = JSON.parse(stored);
+    normalizeData();
     return;
   }
   try {
@@ -48,6 +62,7 @@ async function loadData() {
     if (res.ok) {
       const text = await res.text();
       data = parseCSV(text);
+      normalizeData();
       saveData();
     }
   } catch (e) {
@@ -55,12 +70,22 @@ async function loadData() {
   }
 }
 
+// Garantiza que cada registro tenga su lista de pagos
+function normalizeData() {
+  data.forEach(d => {
+    if (typeof d.Pagos === 'string') d.Pagos = parsePagosStr(d.Pagos);
+    if (!Array.isArray(d.Pagos)) d.Pagos = [];
+  });
+}
+
 // ── Data: Save ──
 function saveData() {
   localStorage.setItem(LS_KEY, JSON.stringify(data));
 }
 
-// ── CSV parser ──
+// ─────────────────────────────────────────────
+//  CSV (la columna Pagos se serializa: hitos con '|', campos con '~')
+// ─────────────────────────────────────────────
 function parseCSV(text) {
   const lines = text.trim().split('\n').map(l => l.replace(/\r$/, ''));
   if (lines.length < 2) return [];
@@ -69,19 +94,37 @@ function parseCSV(text) {
     const vals = line.split(',');
     const obj = {};
     headers.forEach((h, i) => obj[h.trim()] = (vals[i] || '').trim());
+    obj.Pagos = parsePagosStr(obj.Pagos || '');
     return obj;
   });
 }
 
-// ── CSV generator ──
 function toCSV() {
   if (!data.length) return '';
-  const headers = ['Fuente', 'Proyecto', 'Tipo', 'Cliente', 'Razón social', 'Fecha de envío', 'Valor', 'Metraje', 'Observación', 'Estado', 'Fecha de último seguimiento'];
+  const headers = ['Fuente', 'Proyecto', 'Tipo', 'Cliente', 'Razón social', 'Fecha de envío', 'Valor', 'Metraje', 'Observación', 'Estado', 'Fecha de último seguimiento', 'Pagos'];
   const lines = [headers.join(',')];
   data.forEach(d => {
-    lines.push(headers.map(h => (d[h] || '').replace(/,/g, ';')).join(','));
+    lines.push(headers.map(h => {
+      const v = h === 'Pagos' ? pagosToStr(d.Pagos) : String(d[h] || '');
+      return v.replace(/,/g, ';');
+    }).join(','));
   });
   return lines.join('\n');
+}
+
+function parsePagosStr(str) {
+  if (!str) return [];
+  return str.split('|').filter(Boolean).map(p => {
+    const [concepto = '', valor = '', remitida = '', pagada = ''] = p.split('~');
+    return { concepto, valor, remitida, pagada };
+  });
+}
+
+function pagosToStr(pagos) {
+  if (!Array.isArray(pagos) || !pagos.length) return '';
+  return pagos.map(p =>
+    [p.concepto, p.valor, p.remitida, p.pagada].map(v => String(v || '').replace(/[|~,]/g, ' ')).join('~')
+  ).join('|');
 }
 
 // ─────────────────────────────────────────────
@@ -98,6 +141,8 @@ function daysSince(str) {
   if (!d) return null;
   return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
+
+function hoy() { return new Date().toISOString().slice(0, 10); }
 
 // Días desde el último contacto (seguimiento o, si no hay, envío)
 function diasSinContacto(d) {
@@ -131,6 +176,37 @@ function esc(s) {
 }
 
 function valor(d) { return parseFloat(d.Valor) || 0; }
+function valorPago(p) { return parseFloat(p.valor) || 0; }
+
+// ─────────────────────────────────────────────
+//  Lógica de cobros
+// ─────────────────────────────────────────────
+// Estado de un hito: 'pendiente' (no remitida) | 'remitida' (esperando pago) | 'pagada'
+function pagoEstado(p) {
+  if (p.pagada) return 'pagada';
+  if (p.remitida) return 'remitida';
+  return 'pendiente';
+}
+
+// Resumen de cobro de un proyecto
+function cobroResumen(d) {
+  const pagos = d.Pagos || [];
+  const total = valor(d);
+  let cobrado = 0, remitido = 0, porRemitir = 0, nPagados = 0;
+  pagos.forEach(p => {
+    const v = valorPago(p);
+    const e = pagoEstado(p);
+    if (e === 'pagada') { cobrado += v; nPagados++; }
+    else if (e === 'remitida') remitido += v;
+    else porRemitir += v;
+  });
+  let estado;
+  if (!pagos.length) estado = 'sin-cuentas';
+  else if (nPagados === pagos.length) estado = 'cobrado';
+  else if (remitido > 0) estado = 'en-cobro';
+  else estado = 'por-remitir';
+  return { pagos, total, cobrado, remitido, porRemitir, nPagados, nHitos: pagos.length, estado };
+}
 
 // ── Render everything ──
 function render() {
@@ -140,8 +216,10 @@ function render() {
   renderCharts();
   renderTable();
   renderMobileCards();
+  renderCobros();
   populateFilterOptions();
   updateFilterUI();
+  updateTabBadge();
 }
 
 function renderList() {
@@ -163,7 +241,14 @@ function renderStats() {
   const valorAdj = adjudicadas.reduce((s, d) => s + valor(d), 0);
   const decididas = adjudicadas.length + perdidas.length;
   const tasaExito = decididas > 0 ? ((adjudicadas.length / decididas) * 100).toFixed(0) : '—';
-  const ticket = adjudicadas.length > 0 ? valorAdj / adjudicadas.length : 0;
+
+  let cobrado = 0, remitido = 0;
+  adjudicadas.forEach(d => {
+    const r = cobroResumen(d);
+    cobrado += r.cobrado;
+    remitido += r.remitido;
+  });
+  const porCobrar = Math.max(valorAdj - cobrado, 0);
 
   statsGrid.innerHTML = `
     <div class="stat-card">
@@ -176,18 +261,23 @@ function renderStats() {
       <div class="value win">$${formatMoney(valorAdj)}</div>
       <div class="sub">${adjudicadas.length} proyectos ganados</div>
     </div>
+    <div class="stat-card clickable" data-action="cobros" title="Clic para ver cobros">
+      <div class="label">Por Cobrar</div>
+      <div class="value ${porCobrar ? 'alert' : ''}">$${formatMoney(porCobrar)}</div>
+      <div class="sub">${remitido ? '$' + formatMoneyShort(remitido) + ' remitido en espera' : 'cartera pendiente'}</div>
+    </div>
+    <div class="stat-card clickable" data-action="cobros" title="Clic para ver cobros">
+      <div class="label">Cobrado</div>
+      <div class="value win">$${formatMoney(cobrado)}</div>
+      <div class="sub">${valorAdj ? Math.round((cobrado / valorAdj) * 100) + '% del adjudicado' : 'sin adjudicados'}</div>
+    </div>
     <div class="stat-card">
       <div class="label">Tasa de Éxito</div>
       <div class="value">${tasaExito}${tasaExito !== '—' ? '%' : ''}</div>
       <div class="sub">${adjudicadas.length} ganadas / ${perdidas.length} perdidas</div>
     </div>
-    <div class="stat-card">
-      <div class="label">Ticket Promedio</div>
-      <div class="value">$${formatMoney(ticket)}</div>
-      <div class="sub">por proyecto adjudicado</div>
-    </div>
     <div class="stat-card clickable ${pendientes.length ? 'warn' : ''} ${followUpFilter ? 'active' : ''}" data-action="followup" title="Clic para filtrar">
-      <div class="label">Requieren Seguimiento</div>
+      <div class="label">Req. Seguimiento</div>
       <div class="value ${pendientes.length ? 'alert' : ''}">${pendientes.length}</div>
       <div class="sub">sin contacto hace +${DIAS_ALERTA} días</div>
     </div>
@@ -195,25 +285,63 @@ function renderStats() {
 }
 
 // ─────────────────────────────────────────────
-//  Alerta de seguimientos críticos
+//  Alertas (seguimiento + cobros)
 // ─────────────────────────────────────────────
 function renderAlert() {
   const banner = $('#alert-banner');
+  const banners = [];
+
+  // Cotizaciones activas sin contacto reciente
   const criticas = data.filter(d => {
     if (!ESTADOS_ACTIVOS.includes(d.Estado)) return false;
     const dias = diasSinContacto(d);
     return dias === null || dias > DIAS_CRITICO;
   });
-  if (!criticas.length) { banner.innerHTML = ''; return; }
+  if (criticas.length) {
+    const valorRiesgo = criticas.reduce((s, d) => s + valor(d), 0);
+    banners.push(`
+      <div class="alert-banner" data-action="followup">
+        <span class="alert-icon">⚠</span>
+        <span><strong>${criticas.length} cotización${criticas.length > 1 ? 'es' : ''}</strong> sin contacto hace más de ${DIAS_CRITICO} días
+        ${valorRiesgo ? `— <strong>$${formatMoney(valorRiesgo)}</strong> en riesgo` : ''}</span>
+        <span class="alert-cta">Ver →</span>
+      </div>`);
+  }
 
-  const valorRiesgo = criticas.reduce((s, d) => s + valor(d), 0);
-  banner.innerHTML = `
-    <div class="alert-banner" data-action="followup">
-      <span class="alert-icon">⚠</span>
-      <span><strong>${criticas.length} cotización${criticas.length > 1 ? 'es' : ''}</strong> sin contacto hace más de ${DIAS_CRITICO} días
-      ${valorRiesgo ? `— <strong>$${formatMoney(valorRiesgo)}</strong> en riesgo` : ''}</span>
-      <span class="alert-cta">Ver →</span>
-    </div>`;
+  // Cuentas remitidas sin pago hace demasiado
+  let cuentasVencidas = 0, valorVencido = 0;
+  data.filter(d => d.Estado === 'Adjudicada').forEach(d => {
+    (d.Pagos || []).forEach(p => {
+      if (pagoEstado(p) === 'remitida' && (daysSince(p.remitida) ?? 0) > DIAS_COBRO_ALERTA) {
+        cuentasVencidas++;
+        valorVencido += valorPago(p);
+      }
+    });
+  });
+  if (cuentasVencidas) {
+    banners.push(`
+      <div class="alert-banner cobro" data-action="cobros-vencidos">
+        <span class="alert-icon">💰</span>
+        <span><strong>${cuentasVencidas} cuenta${cuentasVencidas > 1 ? 's' : ''} de cobro</strong> remitida${cuentasVencidas > 1 ? 's' : ''} sin pago hace más de ${DIAS_COBRO_ALERTA} días
+        ${valorVencido ? `— <strong>$${formatMoney(valorVencido)}</strong> por recaudar` : ''}</span>
+        <span class="alert-cta">Ver →</span>
+      </div>`);
+  }
+
+  // Adjudicadas sin ninguna cuenta de cobro
+  const sinCuenta = data.filter(d => d.Estado === 'Adjudicada' && cobroResumen(d).estado === 'sin-cuentas');
+  if (sinCuenta.length) {
+    const valorSin = sinCuenta.reduce((s, d) => s + valor(d), 0);
+    banners.push(`
+      <div class="alert-banner cobro" data-action="cobros-sincuenta">
+        <span class="alert-icon">🧾</span>
+        <span><strong>${sinCuenta.length} proyecto${sinCuenta.length > 1 ? 's' : ''} adjudicado${sinCuenta.length > 1 ? 's' : ''}</strong> sin cuenta de cobro registrada
+        ${valorSin ? `— <strong>$${formatMoney(valorSin)}</strong> sin facturar` : ''}</span>
+        <span class="alert-cta">Ver →</span>
+      </div>`);
+  }
+
+  banner.innerHTML = banners.join('');
 }
 
 // ─────────────────────────────────────────────
@@ -251,6 +379,7 @@ function renderCharts() {
   renderChartFuente();
   renderChartTipo();
   renderChartClientes();
+  renderChartCartera();
 }
 
 // Evolución mensual: valor cotizado vs adjudicado por mes de envío
@@ -394,6 +523,43 @@ function renderChartClientes() {
   }).join('');
 }
 
+// Estado de cartera: cobrado / remitido en espera / por facturar (sobre adjudicado)
+function renderChartCartera() {
+  const el = $('#chart-cartera');
+  const adjudicadas = data.filter(d => d.Estado === 'Adjudicada');
+  const valorAdj = adjudicadas.reduce((s, d) => s + valor(d), 0);
+  if (!valorAdj) { el.innerHTML = '<div class="chart-empty">Aún no hay valor adjudicado</div>'; return; }
+
+  let cobrado = 0, remitido = 0;
+  adjudicadas.forEach(d => {
+    const r = cobroResumen(d);
+    cobrado += r.cobrado;
+    remitido += r.remitido;
+  });
+  const porFacturar = Math.max(valorAdj - cobrado - remitido, 0);
+  const total = cobrado + remitido + porFacturar || 1;
+
+  const segs = [
+    { label: 'Cobrado', valor: cobrado, color: 'var(--adjudicada)' },
+    { label: 'Remitido en espera', valor: remitido, color: 'var(--enviada)' },
+    { label: 'Por facturar', valor: porFacturar, color: 'var(--por-definir)' }
+  ];
+
+  el.innerHTML = `
+    <div class="stack-bar">
+      ${segs.filter(s => s.valor > 0).map(s =>
+        `<div class="stack-seg" style="width:${(s.valor / total) * 100}%;background:${s.color}" title="${s.label}: $${formatMoney(s.valor)}"></div>`
+      ).join('')}
+    </div>
+    <div class="stack-legend">
+      ${segs.map(s => `<div class="legend-row">
+        <i style="background:${s.color}"></i>
+        <span class="legend-name">${s.label}</span>
+        <span class="legend-val">$${formatMoneyShort(s.valor)} · ${Math.round((s.valor / total) * 100)}%</span>
+      </div>`).join('')}
+    </div>`;
+}
+
 // ─────────────────────────────────────────────
 //  Filter logic
 // ─────────────────────────────────────────────
@@ -469,10 +635,21 @@ function seguimientoCell(d) {
   return `${formatDate(fecha)} <span class="seg-badge ${cls}">${relTime(dias)}</span>`;
 }
 
+function cobroCell(d) {
+  if (d.Estado !== 'Adjudicada') return '—';
+  const r = cobroResumen(d);
+  if (r.estado === 'sin-cuentas') return `<span class="seg-badge seg-alerta">sin cuenta</span>`;
+  const pct = r.total ? Math.min(Math.round((r.cobrado / r.total) * 100), 100) : (r.nPagados === r.nHitos ? 100 : 0);
+  return `<div class="mini-cobro" title="Cobrado $${formatMoney(r.cobrado)} de $${formatMoney(r.total)} · ${r.nPagados}/${r.nHitos} cuentas pagadas">
+    <div class="mini-track"><div class="mini-fill" style="width:${pct}%"></div></div>
+    <span class="mini-label">${pct}%</span>
+  </div>`;
+}
+
 function renderTable() {
   const filtered = getFiltered();
   if (!filtered.length) {
-    tableBody.innerHTML = `<tr><td colspan="11"><div class="empty-state"><div class="icon">📋</div><p>No hay cotizaciones que mostrar</p></div></td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="12"><div class="empty-state"><div class="icon">📋</div><p>No hay cotizaciones que mostrar</p></div></td></tr>`;
     return;
   }
   tableBody.innerHTML = filtered.map(d => {
@@ -490,6 +667,7 @@ function renderTable() {
       <td class="num">${valor(d) ? '$' + formatMoney(valor(d)) : '—'}</td>
       <td class="num">${parseFloat(d.Metraje) ? d.Metraje : '—'}</td>
       <td><span class="status-badge ${css}"><span class="dot"></span>${esc(d.Estado)}</span></td>
+      <td>${cobroCell(d)}</td>
       <td><button class="btn-icon btn-status" data-idx="${idx}" title="Cambiar estado">⋮</button></td>
     </tr>`;
   }).join('');
@@ -505,6 +683,7 @@ function renderMobileCards() {
   mobileCards.innerHTML = filtered.map(d => {
     const idx = data.indexOf(d);
     const css = ESTADO_CSS[d.Estado] || '';
+    const cobro = d.Estado === 'Adjudicada' ? `<div class="mc-seg">Cobro: ${cobroCell(d)}</div>` : '';
     return `<div class="mobile-card" data-idx="${idx}">
       <div class="mobile-card-header">
         <h4>${esc(d.Proyecto)}</h4>
@@ -516,9 +695,110 @@ function renderMobileCards() {
         <div>Valor: <strong>${valor(d) ? '$' + formatMoney(valor(d)) : '—'}</strong></div>
         <div>Envío: <strong>${formatDate(d['Fecha de envío'])}</strong></div>
         <div class="mc-seg">Seguimiento: ${seguimientoCell(d)}</div>
+        ${cobro}
       </div>
     </div>`;
   }).join('');
+}
+
+// ─────────────────────────────────────────────
+//  Vista Cobros
+// ─────────────────────────────────────────────
+function renderCobros() {
+  const adjudicadas = data.filter(d => d.Estado === 'Adjudicada');
+  if (!adjudicadas.length) {
+    cobrosView.innerHTML = `<div class="empty-state"><div class="icon">💰</div><p>Aún no hay proyectos adjudicados.<br>Cuando adjudiques una cotización aparecerá aquí para gestionar sus cuentas de cobro.</p></div>`;
+    return;
+  }
+
+  // Conteos para los chips de filtro
+  const counts = { '': adjudicadas.length, 'sin-cuentas': 0, 'por-remitir': 0, 'en-cobro': 0, 'cobrado': 0 };
+  adjudicadas.forEach(d => counts[cobroResumen(d).estado]++);
+
+  const chips = ['', 'sin-cuentas', 'por-remitir', 'en-cobro', 'cobrado'].map(k =>
+    `<button class="chip ${cobroFilter === k ? 'active' : ''}" data-cfilter="${k}">${k ? COBRO_LABEL[k] : 'Todos'} <span>${counts[k]}</span></button>`
+  ).join('');
+
+  const visibles = adjudicadas.filter(d => !cobroFilter || cobroResumen(d).estado === cobroFilter);
+
+  const cards = visibles.map(d => {
+    const idx = data.indexOf(d);
+    const r = cobroResumen(d);
+    const pct = r.total ? Math.min(Math.round((r.cobrado / r.total) * 100), 100) : (r.nHitos && r.nPagados === r.nHitos ? 100 : 0);
+
+    const hitos = r.pagos.map((p, i) => {
+      const e = pagoEstado(p);
+      let estadoHtml = '', accion = '';
+      if (e === 'pendiente') {
+        estadoHtml = `<span class="hito-chip pendiente">Por remitir</span>`;
+        accion = `<button class="btn-mini" data-action="remitir" data-idx="${idx}" data-pidx="${i}" title="Marcar como remitida hoy">✉ Remitir</button>`;
+      } else if (e === 'remitida') {
+        const dias = daysSince(p.remitida);
+        const vencida = (dias ?? 0) > DIAS_COBRO_ALERTA;
+        estadoHtml = `<span class="hito-chip remitida ${vencida ? 'vencida' : ''}" title="Remitida el ${formatDate(p.remitida)}">Remitida ${relTime(dias)}</span>`;
+        accion = `<button class="btn-mini ok" data-action="pagar" data-idx="${idx}" data-pidx="${i}" title="Marcar como pagada hoy">✓ Pagada</button>`;
+      } else {
+        estadoHtml = `<span class="hito-chip pagada" title="Pagada el ${formatDate(p.pagada)}">✓ Pagada ${formatDate(p.pagada)}</span>`;
+      }
+      return `<div class="hito-row ${e}">
+        <span class="hito-concepto" title="${esc(p.concepto)}">${esc(p.concepto) || 'Cuenta de cobro'}</span>
+        <span class="hito-valor">${valorPago(p) ? '$' + formatMoney(valorPago(p)) : '—'}</span>
+        ${estadoHtml}
+        <span class="hito-actions">${accion}<button class="btn-mini del" data-action="delpago" data-idx="${idx}" data-pidx="${i}" title="Eliminar cuenta">✕</button></span>
+      </div>`;
+    }).join('');
+
+    const diff = r.total - (r.cobrado + r.remitido + r.porRemitir);
+
+    return `<div class="cobro-card estado-${r.estado}">
+      <div class="cobro-head" data-idx="${idx}" title="Clic para editar el proyecto">
+        <div class="cobro-head-info">
+          <h4>${esc(d.Proyecto)}</h4>
+          <span class="cobro-cliente">${esc(d['Razón social'] || d.Cliente) || '—'}</span>
+        </div>
+        <div class="cobro-head-right">
+          <span class="cobro-estado-chip ${r.estado}">${COBRO_LABEL[r.estado]}</span>
+          <span class="cobro-valor">$${formatMoney(r.total)}</span>
+        </div>
+      </div>
+      <div class="cobro-progress">
+        <div class="cobro-track">
+          <div class="cobro-fill" style="width:${pct}%"></div>
+          <div class="cobro-fill-remitido" style="width:${r.total ? Math.min(((r.cobrado + r.remitido) / r.total) * 100, 100) : 0}%"></div>
+        </div>
+        <span class="cobro-pct">${pct}% cobrado · $${formatMoneyShort(r.cobrado)} de $${formatMoneyShort(r.total)}</span>
+      </div>
+      <div class="cobro-hitos">
+        ${hitos || '<div class="hito-empty">Sin cuentas de cobro registradas</div>'}
+        ${diff > 0 && r.nHitos ? `<div class="hito-resto">Sin asignar a cuentas: $${formatMoney(diff)}</div>` : ''}
+      </div>
+      <div class="hito-add">
+        <input type="text" class="add-concepto" placeholder="Concepto (ej. Anticipo 50%)">
+        <input type="number" class="add-valor" placeholder="Valor $">
+        <button class="btn-mini add" data-action="addpago" data-idx="${idx}" title="Agregar cuenta de cobro">＋ Agregar</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  cobrosView.innerHTML = `
+    <div class="cobro-filters">${chips}</div>
+    <div class="cobros-grid">${cards || '<div class="empty-state"><div class="icon">💰</div><p>Ningún proyecto en este estado</p></div>'}</div>`;
+}
+
+function updateTabBadge() {
+  const pendientes = data.filter(d => d.Estado === 'Adjudicada' && cobroResumen(d).estado !== 'cobrado').length;
+  const badge = $('#tab-cobros-badge');
+  badge.textContent = pendientes || '';
+  badge.style.display = pendientes ? 'inline-flex' : 'none';
+}
+
+// ── Cambio de vista ──
+function switchView(v) {
+  view = v;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
+  const cotiz = ['funnel-section', 'insights-grid', 'filter-bar', 'results-bar', 'table-container', 'mobile-cards'];
+  cotiz.forEach(id => document.getElementById(id).classList.toggle('view-hidden', v !== 'cotizaciones'));
+  cobrosView.classList.toggle('view-hidden', v !== 'cobros');
 }
 
 // ── Populate filter dropdowns ──
@@ -554,6 +834,11 @@ function bindEvents() {
     $('#btn-insights').classList.toggle('active', !grid.classList.contains('collapsed'));
   });
 
+  // Tabs
+  document.querySelectorAll('.view-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchView(tab.dataset.view));
+  });
+
   // Modal
   $('#modal-close').addEventListener('click', closeModal);
   $('#btn-cancel').addEventListener('click', closeModal);
@@ -566,6 +851,43 @@ function bindEvents() {
     if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); saveEntry(); }
   });
 
+  // Hitos en el modal
+  $('#btn-add-pago').addEventListener('click', () => {
+    modalPagos.push({ concepto: '', valor: '', remitida: '', pagada: '' });
+    renderModalPagos();
+    const rows = document.querySelectorAll('#pagos-list .pago-row');
+    const last = rows[rows.length - 1];
+    if (last) last.querySelector('.p-concepto').focus();
+  });
+
+  $('#pagos-list').addEventListener('input', e => {
+    const row = e.target.closest('.pago-row');
+    if (!row) return;
+    const i = parseInt(row.dataset.pidx);
+    const map = { 'p-concepto': 'concepto', 'p-valor': 'valor', 'p-remitida': 'remitida', 'p-pagada': 'pagada' };
+    for (const cls in map) {
+      if (e.target.classList.contains(cls)) { modalPagos[i][map[cls]] = e.target.value; break; }
+    }
+    // actualizar chip de estado del hito en vivo
+    const chip = row.querySelector('.hito-chip');
+    if (chip) {
+      const est = pagoEstado(modalPagos[i]);
+      chip.className = 'hito-chip ' + est;
+      chip.textContent = { pendiente: 'Por remitir', remitida: 'Remitida', pagada: '✓ Pagada' }[est];
+    }
+    updatePagosSummary();
+  });
+
+  $('#pagos-list').addEventListener('click', e => {
+    const del = e.target.closest('.p-del');
+    if (!del) return;
+    const row = del.closest('.pago-row');
+    modalPagos.splice(parseInt(row.dataset.pidx), 1);
+    renderModalPagos();
+  });
+
+  $('#f-valor').addEventListener('input', updatePagosSummary);
+
   // Filters
   $('#search-input').addEventListener('input', renderList);
   $('#filter-estado').addEventListener('change', () => { renderFunnel(); renderList(); });
@@ -573,12 +895,73 @@ function bindEvents() {
   $('#filter-tipo').addEventListener('change', renderList);
   $('#btn-clear-filters').addEventListener('click', clearFilters);
 
-  // KPI / banner → filtro de seguimiento
+  // KPI / banner
   statsGrid.addEventListener('click', e => {
-    if (e.target.closest('[data-action="followup"]')) toggleFollowUpFilter();
+    if (e.target.closest('[data-action="followup"]')) { switchView('cotizaciones'); toggleFollowUpFilter(); return; }
+    if (e.target.closest('[data-action="cobros"]')) switchView('cobros');
   });
   $('#alert-banner').addEventListener('click', e => {
-    if (e.target.closest('[data-action="followup"]')) { followUpFilter = true; renderStats(); renderList(); scrollToTable(); }
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const action = el.dataset.action;
+    if (action === 'followup') {
+      switchView('cotizaciones');
+      followUpFilter = true;
+      renderStats(); renderList(); scrollToTable();
+    } else if (action === 'cobros-vencidos') {
+      cobroFilter = 'en-cobro'; renderCobros(); switchView('cobros');
+    } else if (action === 'cobros-sincuenta') {
+      cobroFilter = 'sin-cuentas'; renderCobros(); switchView('cobros');
+    }
+  });
+
+  // Vista cobros: chips + acciones de hitos
+  cobrosView.addEventListener('click', e => {
+    const chip = e.target.closest('.chip[data-cfilter]');
+    if (chip) { cobroFilter = chip.dataset.cfilter; renderCobros(); return; }
+
+    const btn = e.target.closest('[data-action]');
+    if (btn) {
+      const idx = parseInt(btn.dataset.idx);
+      const action = btn.dataset.action;
+      if (action === 'addpago') {
+        const card = btn.closest('.cobro-card');
+        const concepto = card.querySelector('.add-concepto').value.trim();
+        const vlr = card.querySelector('.add-valor').value;
+        if (!concepto && !vlr) { toast('Indica concepto o valor de la cuenta', true); return; }
+        data[idx].Pagos.push({ concepto, valor: vlr, remitida: '', pagada: '' });
+        saveData(); render();
+        toast('Cuenta de cobro agregada');
+      } else if (action === 'remitir') {
+        data[idx].Pagos[parseInt(btn.dataset.pidx)].remitida = hoy();
+        saveData(); render();
+        toast('Cuenta marcada como remitida hoy');
+      } else if (action === 'pagar') {
+        data[idx].Pagos[parseInt(btn.dataset.pidx)].pagada = hoy();
+        saveData(); render();
+        toast('💰 Pago registrado');
+      } else if (action === 'delpago') {
+        if (confirm('¿Eliminar esta cuenta de cobro?')) {
+          data[idx].Pagos.splice(parseInt(btn.dataset.pidx), 1);
+          saveData(); render();
+          toast('Cuenta eliminada');
+        }
+      }
+      return;
+    }
+
+    const head = e.target.closest('.cobro-head');
+    if (head) openModal(parseInt(head.dataset.idx));
+  });
+
+  // Enter en el alta rápida de hitos = agregar
+  cobrosView.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    if (e.target.classList.contains('add-concepto') || e.target.classList.contains('add-valor')) {
+      e.preventDefault();
+      const btn = e.target.closest('.hito-add').querySelector('[data-action="addpago"]');
+      if (btn) btn.click();
+    }
   });
 
   // Funnel → filtrar por estado
@@ -619,7 +1002,7 @@ function bindEvents() {
       if (contextIdx >= 0 && contextIdx < data.length) {
         data[contextIdx].Estado = btn.dataset.status;
         // al cambiar estado registramos contacto de hoy
-        data[contextIdx]['Fecha de último seguimiento'] = new Date().toISOString().slice(0, 10);
+        data[contextIdx]['Fecha de último seguimiento'] = hoy();
         saveData(); render();
         toast(`Estado actualizado a "${btn.dataset.status}"`);
       }
@@ -655,7 +1038,7 @@ function clearFilters() {
 }
 
 function scrollToTable() {
-  $('.filter-bar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#filter-bar').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ─────────────────────────────────────────────
@@ -680,20 +1063,63 @@ function openModal(idx = -1) {
     $('#f-valor').value = d.Valor || '';
     $('#f-metraje').value = d.Metraje || '';
     $('#f-obs').value = d['Observación'] || '';
+    modalPagos = JSON.parse(JSON.stringify(d.Pagos || []));
   } else {
     ['f-proyecto', 'f-cliente', 'f-razon', 'f-valor', 'f-metraje', 'f-obs'].forEach(id => $(`#${id}`).value = '');
     $('#f-fuente').value = 'Referido';
     $('#f-tipo').value = 'Peritaje Estructural';
     $('#f-estado').value = 'Por definir';
-    $('#f-fecha').value = new Date().toISOString().slice(0, 10);
+    $('#f-fecha').value = hoy();
     $('#f-seguimiento').value = '';
+    modalPagos = [];
   }
 
+  renderModalPagos();
   modalOverlay.classList.add('active');
   setTimeout(() => $('#f-proyecto').focus(), 100);
 }
 
 function closeModal() { modalOverlay.classList.remove('active'); }
+
+// ── Hitos dentro del modal ──
+function renderModalPagos() {
+  const list = $('#pagos-list');
+  if (!modalPagos.length) {
+    list.innerHTML = '<div class="pagos-empty">Sin cuentas de cobro. Agrega hitos de pago (anticipo, entregas, saldo…)</div>';
+  } else {
+    list.innerHTML = modalPagos.map((p, i) => `
+      <div class="pago-row" data-pidx="${i}">
+        <div class="pago-main">
+          <input type="text" class="p-concepto" placeholder="Concepto (ej. Anticipo 50%)" value="${esc(p.concepto)}">
+          <input type="number" class="p-valor" placeholder="Valor $" value="${esc(p.valor)}">
+          <button type="button" class="btn-mini del p-del" title="Eliminar cuenta">✕</button>
+        </div>
+        <div class="pago-dates">
+          <label>Remitida <input type="date" class="p-remitida" value="${esc(p.remitida)}"></label>
+          <label>Pagada <input type="date" class="p-pagada" value="${esc(p.pagada)}"></label>
+          <span class="hito-chip ${pagoEstado(p)}">${{ pendiente: 'Por remitir', remitida: 'Remitida', pagada: '✓ Pagada' }[pagoEstado(p)]}</span>
+        </div>
+      </div>`).join('');
+  }
+  updatePagosSummary();
+}
+
+function updatePagosSummary() {
+  const summary = $('#pagos-summary');
+  if (!modalPagos.length) { summary.textContent = ''; return; }
+  const totalHitos = modalPagos.reduce((s, p) => s + valorPago(p), 0);
+  const valorProy = parseFloat($('#f-valor').value) || 0;
+  const cobrado = modalPagos.filter(p => p.pagada).reduce((s, p) => s + valorPago(p), 0);
+  let txt = `Total en cuentas: $${formatMoney(totalHitos)}`;
+  if (valorProy) {
+    const diff = valorProy - totalHitos;
+    txt += diff === 0 ? ' · cubre el valor del proyecto ✓'
+      : diff > 0 ? ` · faltan $${formatMoney(diff)} por asignar`
+      : ` · excede el valor del proyecto en $${formatMoney(-diff)}`;
+  }
+  if (cobrado) txt += ` · cobrado $${formatMoney(cobrado)}`;
+  summary.textContent = txt;
+}
 
 // ── Save ──
 function saveEntry() {
@@ -711,7 +1137,8 @@ function saveEntry() {
     Metraje: $('#f-metraje').value,
     'Observación': $('#f-obs').value.trim(),
     Estado: $('#f-estado').value,
-    'Fecha de último seguimiento': $('#f-seguimiento').value
+    'Fecha de último seguimiento': $('#f-seguimiento').value,
+    Pagos: modalPagos.filter(p => (p.concepto || '').trim() || valorPago(p))
   };
 
   const idx = parseInt($('#edit-index').value);
@@ -776,6 +1203,7 @@ function importCSV(e) {
     const imported = parseCSV(ev.target.result);
     if (imported.length) {
       data = imported;
+      normalizeData();
       saveData();
       render();
       toast(`${imported.length} cotizaciones importadas`);

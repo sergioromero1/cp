@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Seguimiento interno de cotizaciones – Funnel de conversión y gestión de proyectos">
+  <meta name="description" content="Seguimiento interno de cotizaciones – Funnel de conversión, gestión de proyectos y recaudo">
   <title>Cotizaciones · Seguimiento</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="styles.css">
@@ -33,11 +33,17 @@
   <!-- ── KPIs ── -->
   <div class="stats-grid" id="stats-grid"></div>
 
-  <!-- ── Alerta de seguimientos ── -->
+  <!-- ── Alertas ── -->
   <div class="alert-wrap" id="alert-banner"></div>
 
+  <!-- ── Tabs de vista ── -->
+  <div class="view-tabs">
+    <button class="view-tab active" data-view="cotizaciones">📋 Cotizaciones</button>
+    <button class="view-tab" data-view="cobros">💰 Cobros <span class="tab-badge" id="tab-cobros-badge"></span></button>
+  </div>
+
   <!-- ── Funnel ── -->
-  <section class="funnel-section">
+  <section class="funnel-section" id="funnel-section">
     <h2>Funnel de Conversión <span class="hint">— clic en una etapa para filtrar</span></h2>
     <div class="funnel-bar" id="funnel-bar"></div>
     <div class="funnel-labels" id="funnel-labels"></div>
@@ -61,10 +67,14 @@
       <h3>Top clientes (adjudicado)</h3>
       <div class="chart-area" id="chart-clientes"></div>
     </div>
+    <div class="insight-card">
+      <h3>Estado de cartera (adjudicado)</h3>
+      <div class="chart-area" id="chart-cartera"></div>
+    </div>
   </section>
 
   <!-- ── Filters ── -->
-  <div class="filter-bar">
+  <div class="filter-bar" id="filter-bar">
     <div class="search-box">
       <span class="icon">🔍</span>
       <input type="text" id="search-input" placeholder="Buscar por proyecto, cliente o razón social…">
@@ -87,13 +97,13 @@
   </div>
 
   <!-- ── Resultados ── -->
-  <div class="results-bar">
+  <div class="results-bar" id="results-bar">
     <span id="results-count"></span>
     <span id="results-value"></span>
   </div>
 
   <!-- ── Table (desktop) ── -->
-  <div class="table-container">
+  <div class="table-container" id="table-container">
     <table class="data-table" id="data-table">
       <thead>
         <tr>
@@ -107,6 +117,7 @@
           <th data-col="Valor" class="num">Valor<span class="sort-ind"></span></th>
           <th data-col="Metraje" class="num">m²<span class="sort-ind"></span></th>
           <th data-col="Estado">Estado<span class="sort-ind"></span></th>
+          <th>Cobro</th>
           <th>Acciones</th>
         </tr>
       </thead>
@@ -116,6 +127,9 @@
 
   <!-- ── Mobile Cards ── -->
   <div class="mobile-cards" id="mobile-cards"></div>
+
+  <!-- ── Vista Cobros ── -->
+  <div class="cobros-view view-hidden" id="cobros-view"></div>
 
   <!-- ── Modal: Crear/Editar ── -->
   <div class="modal-overlay" id="modal-overlay">
@@ -198,6 +212,16 @@
             <input type="number" id="f-metraje" placeholder="0">
           </div>
         </div>
+
+        <!-- ── Cuentas de cobro ── -->
+        <div class="form-group pagos-section">
+          <label>Cuentas de Cobro · Hitos de Pago</label>
+          <div id="pagos-list"></div>
+          <button type="button" class="btn btn-secondary btn-add-pago" id="btn-add-pago">＋ Agregar cuenta de
+            cobro</button>
+          <div class="pagos-summary" id="pagos-summary"></div>
+        </div>
+
         <div class="form-group">
           <label for="f-obs">Observación</label>
           <textarea id="f-obs" placeholder="Notas adicionales…"></textarea>
