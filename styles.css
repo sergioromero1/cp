@@ -1331,6 +1331,12 @@ body {
 
 .ret-nota { color: var(--seguimiento); }
 
+/* ── Tiempo de cobro ── */
+.hito-chip.tiempo { background: rgba(108,92,231,0.15); color: var(--accent-light); }
+.hito-chip.tiempo.lento { background: rgba(225,112,85,0.15); color: var(--warn); }
+
+.tiempo-nota { color: var(--accent-light); }
+
 .cartera-nota {
   margin-top: 0.6rem;
   padding-top: 0.6rem;

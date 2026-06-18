@@ -148,6 +148,19 @@ function daysSince(str) {
 
 function hoy() { return new Date().toISOString().slice(0, 10); }
 
+// Días entre dos fechas (str a → str b). null si falta alguna.
+function daysBetween(a, b) {
+  const da = parseDate(a), db = parseDate(b);
+  if (!da || !db) return null;
+  return Math.round((db.getTime() - da.getTime()) / 86400000);
+}
+
+// Días que tardó en pagarse una cuenta desde su remisión
+function diasEnPagar(p) {
+  if (!p.pagada || !p.remitida) return null;
+  return Math.max(daysBetween(p.remitida, p.pagada), 0);
+}
+
 // Días desde el último contacto (seguimiento o, si no hay, envío)
 function diasSinContacto(d) {
   return daysSince(d['Fecha de último seguimiento']) ?? daysSince(d['Fecha de envío']);
@@ -210,20 +223,24 @@ function cobroResumen(d) {
   const pagos = d.Pagos || [];
   const total = valor(d);
   let cobrado = 0, recibido = 0, remitido = 0, porRemitir = 0, nPagados = 0;
+  let sumDias = 0, nConTiempo = 0;
   pagos.forEach(p => {
     const v = valorPago(p);
     const e = pagoEstado(p);
     if (e === 'pagada') { cobrado += v; recibido += recibidoPago(p); nPagados++; }
     else if (e === 'remitida') remitido += v;
     else porRemitir += v;
+    const dp = diasEnPagar(p);
+    if (dp !== null) { sumDias += dp; nConTiempo++; }
   });
   const retenciones = Math.max(cobrado - recibido, 0);
+  const diasPromedio = nConTiempo ? Math.round(sumDias / nConTiempo) : null;
   let estado;
   if (!pagos.length) estado = 'sin-cuentas';
   else if (nPagados === pagos.length) estado = 'cobrado';
   else if (remitido > 0) estado = 'en-cobro';
   else estado = 'por-remitir';
-  return { pagos, total, cobrado, recibido, retenciones, remitido, porRemitir, nPagados, nHitos: pagos.length, estado };
+  return { pagos, total, cobrado, recibido, retenciones, remitido, porRemitir, nPagados, nHitos: pagos.length, estado, diasPromedio };
 }
 
 // ── Render everything ──
@@ -787,7 +804,9 @@ function renderCobros() {
         }
       } else {
         const ret = retencionPago(p);
+        const dpago = diasEnPagar(p);
         estadoHtml = `<span class="hito-chip pagada" title="Pagada el ${formatDate(p.pagada)} · recibido $${formatMoney(recibidoPago(p))}">✓ Pagada ${formatDate(p.pagada)}</span>`
+          + (dpago !== null ? `<span class="hito-chip tiempo ${dpago > DIAS_COBRO_ALERTA ? 'lento' : ''}" title="Remitida ${formatDate(p.remitida)} → pagada ${formatDate(p.pagada)}">⏱ ${dpago === 0 ? 'mismo día' : dpago + 'd en pagar'}</span>` : '')
           + (ret ? `<span class="hito-chip ret" title="Recibido $${formatMoney(recibidoPago(p))} de $${formatMoney(valorPago(p))} facturados">ret. $${formatMoneyShort(ret)}</span>` : '');
       }
       return `<div class="hito-row ${e}">
@@ -816,7 +835,7 @@ function renderCobros() {
           <div class="cobro-fill" style="width:${pct}%"></div>
           <div class="cobro-fill-remitido" style="width:${r.total ? Math.min(((r.cobrado + r.remitido) / r.total) * 100, 100) : 0}%"></div>
         </div>
-        <span class="cobro-pct">${pct}% cobrado · $${formatMoneyShort(r.cobrado)} de $${formatMoneyShort(r.total)}${r.retenciones ? ` · neto recibido $${formatMoneyShort(r.recibido)} <span class="ret-nota">(ret. $${formatMoneyShort(r.retenciones)})</span>` : ''}</span>
+        <span class="cobro-pct">${pct}% cobrado · $${formatMoneyShort(r.cobrado)} de $${formatMoneyShort(r.total)}${r.retenciones ? ` · neto recibido $${formatMoneyShort(r.recibido)} <span class="ret-nota">(ret. $${formatMoneyShort(r.retenciones)})</span>` : ''}${r.diasPromedio !== null ? ` · <span class="tiempo-nota">⏱ ${r.nPagados > 1 ? 'prom. ' : ''}${r.diasPromedio === 0 ? 'pago mismo día' : r.diasPromedio + 'd en cobrar'}</span>` : ''}</span>
       </div>
       <div class="cobro-hitos">
         ${hitos || '<div class="hito-empty">Sin cuentas de cobro registradas</div>'}
