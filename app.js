@@ -12,6 +12,7 @@ const DIAS_COBRO_ALERTA = 15; // cuenta remitida sin pago hace más de N días
 const DIAS_POR_DEFINIR = 5;   // 'Por definir' sin resolverse hace más de N días
 const CSV_FILE = 'cotizaciones.csv';
 const LS_KEY = 'cotizaciones_data';
+const THEME_KEY = 'cotizaciones_theme';
 const PALETTE = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#a29bfe', '#74b9ff'];
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const MESES_FULL = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -45,6 +46,25 @@ const contextMenu = $('#context-menu');
 const toastContainer = $('#toast-container');
 const cobrosView = $('#cobros-view');
 const flujoView = $('#flujo-view');
+
+// ── Tema (claro/oscuro) ──
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = $('#btn-theme');
+  if (btn) {
+    btn.textContent = theme === 'light' ? '☀️' : '🌙';
+    btn.title = theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro';
+  }
+}
+
+function toggleTheme() {
+  const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+}
+
+// Aplicar de inmediato para evitar parpadeo
+applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 
 // ── Init ──
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1064,6 +1084,7 @@ function populateFilterOptions() {
 //  Events
 // ─────────────────────────────────────────────
 function bindEvents() {
+  $('#btn-theme').addEventListener('click', toggleTheme);
   $('#btn-new').addEventListener('click', () => openModal());
   $('#btn-export').addEventListener('click', exportCSV);
   $('#btn-import').addEventListener('click', () => $('#file-import').click());

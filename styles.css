@@ -19,10 +19,33 @@
   --adjudicada: #00b894;
   --perdida: #d63031;
   --warn: #e17055;
+  --header-accent: #1e1b3a;
   --shadow: 0 4px 24px rgba(0,0,0,0.3);
   --radius: 12px;
   --radius-sm: 8px;
   --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Tema claro ── */
+[data-theme="light"] {
+  --bg-primary: #f3f4f8;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-hover: #eceef4;
+  --text-primary: #1d2030;
+  --text-secondary: #5c6378;
+  --text-muted: #9499ab;
+  --border: #e3e6ee;
+  --accent: #6c5ce7;
+  --accent-light: #5a47d8;
+  --por-definir: #707689;
+  --enviada: #0a6fc2;
+  --seguimiento: #c98a06;
+  --adjudicada: #03916f;
+  --perdida: #cf2f30;
+  --warn: #d2552f;
+  --header-accent: #ece9fb;
+  --shadow: 0 6px 24px rgba(46,52,80,0.1);
 }
 
 body {
@@ -31,11 +54,12 @@ body {
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 /* ── Header ── */
 .header {
-  background: linear-gradient(135deg, var(--bg-secondary) 0%, #1e1b3a 100%);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--header-accent) 100%);
   border-bottom: 1px solid var(--border);
   padding: 1rem 2rem;
   display: flex;
@@ -666,7 +690,7 @@ body {
 
 .seg-badge.seg-ok { background: rgba(0,184,148,0.13); color: var(--adjudicada); }
 .seg-badge.seg-alerta { background: rgba(253,203,110,0.15); color: var(--seguimiento); }
-.seg-badge.seg-critico { background: rgba(214,48,49,0.16); color: #ff7675; }
+.seg-badge.seg-critico { background: rgba(214,48,49,0.16); color: var(--perdida); }
 
 /* ── Status Badge ── */
 .status-badge {
@@ -1170,7 +1194,7 @@ body {
 
 .hito-chip.pendiente { background: rgba(139,143,163,0.15); color: var(--text-secondary); }
 .hito-chip.remitida { background: rgba(9,132,227,0.15); color: var(--enviada); }
-.hito-chip.remitida.vencida { background: rgba(214,48,49,0.16); color: #ff7675; }
+.hito-chip.remitida.vencida { background: rgba(214,48,49,0.16); color: var(--perdida); }
 .hito-chip.pagada { background: rgba(0,184,148,0.15); color: var(--adjudicada); }
 
 .hito-actions { display: inline-flex; gap: 0.3rem; flex-shrink: 0; }
@@ -1193,7 +1217,7 @@ body {
 .btn-mini.ok { border-color: rgba(0,184,148,0.4); color: var(--adjudicada); }
 .btn-mini.ok:hover { background: rgba(0,184,148,0.12); }
 .btn-mini.del { padding: 0.3rem 0.45rem; }
-.btn-mini.del:hover { border-color: rgba(214,48,49,0.5); color: #ff7675; }
+.btn-mini.del:hover { border-color: rgba(214,48,49,0.5); color: var(--perdida); }
 .btn-mini.add { border-color: var(--accent); color: var(--accent-light); }
 .btn-mini.add:hover { background: rgba(108,92,231,0.12); }
 
