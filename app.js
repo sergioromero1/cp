@@ -955,6 +955,9 @@ function renderFlujo() {
       </div>
     </div>`;
 
+  // Gráfico de líneas: recaudo acumulado en el tiempo
+  const lineChart = buildLineChart(chartKeys, meses, labelMes);
+
   // Detalle por mes (más reciente primero)
   const detalle = keysAsc.slice().reverse().map(k => {
     const m = meses[k];
@@ -980,7 +983,54 @@ function renderFlujo() {
       </div>`;
   }).join('');
 
-  flujoView.innerHTML = summary + chart + `<div class="flujo-detalle">${detalle}</div>`;
+  flujoView.innerHTML = summary + chart + lineChart + `<div class="flujo-detalle">${detalle}</div>`;
+}
+
+// Gráfico de líneas (SVG) del recaudo neto acumulado mes a mes
+function buildLineChart(chartKeys, meses, labelMes) {
+  // Acumulado del recibido neto a lo largo de los meses mostrados
+  let acc = 0;
+  const pts = chartKeys.map(k => { acc += meses[k].recibido; return { key: k, acum: acc, mes: meses[k].recibido }; });
+  const maxAcum = Math.max(acc, 1);
+
+  const W = 720, H = 210, padX = 12, padTop = 20, padBottom = 12;
+  const innerW = W - padX * 2, innerH = H - padTop - padBottom;
+  const baseY = H - padBottom;
+  const x = i => pts.length === 1 ? W / 2 : padX + (i * innerW) / (pts.length - 1);
+  const y = v => baseY - (v / maxAcum) * innerH;
+
+  const coords = pts.map((p, i) => ({ x: x(i), y: y(p.acum), ...p }));
+  const linePath = coords.map((c, i) => `${i ? 'L' : 'M'}${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ');
+  const areaPath = coords.length
+    ? `M${coords[0].x.toFixed(1)} ${baseY} ` + coords.map(c => `L${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ') + ` L${coords[coords.length - 1].x.toFixed(1)} ${baseY} Z`
+    : '';
+
+  const dots = coords.map(c =>
+    `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="3.5" class="line-dot" vector-effect="non-scaling-stroke">
+       <title>${labelMes(c.key, true)}: acumulado $${formatMoney(c.acum)} · mes $${formatMoney(c.mes)}</title>
+     </circle>`).join('');
+
+  const labels = chartKeys.map(k => `<span>${labelMes(k)}</span>`).join('');
+
+  return `
+    <div class="insight-card flujo-line-card">
+      <h3>Recaudo acumulado <span class="line-total">$${formatMoney(acc)}</span></h3>
+      <div class="line-chart-wrap">
+        <svg class="line-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">
+          <defs>
+            <linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#6c5ce7" stop-opacity="0.35"/>
+              <stop offset="100%" stop-color="#6c5ce7" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          ${areaPath ? `<path d="${areaPath}" fill="url(#lineFill)"/>` : ''}
+          <path class="line-path" d="${linePath}" fill="none" stroke-width="2.5"
+                stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+          ${dots}
+        </svg>
+        <div class="line-labels">${labels}</div>
+      </div>
+    </div>`;
 }
 
 // ── Cambio de vista ──
