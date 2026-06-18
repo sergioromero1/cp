@@ -1370,12 +1370,153 @@ body {
 
 .pago-dates .p-recibido { width: 110px; }
 
-/* ── Responsive cobros ── */
+/* ═════════════════════════════════════════════
+   Vista Flujo de caja
+   ═════════════════════════════════════════════ */
+.flujo-view { padding: 1.25rem 2rem 2rem; }
+
+.flujo-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.flujo-kpi {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.2rem;
+}
+
+.flujo-kpi .label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4rem;
+}
+
+.flujo-kpi .value { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; }
+.flujo-kpi .value.win { color: var(--adjudicada); }
+.flujo-kpi .value.warn-txt { color: var(--seguimiento); }
+.flujo-kpi .sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+/* Gráfica */
+.flujo-chart-card { margin-bottom: 1.25rem; }
+.flujo-bar-chart { height: 190px; align-items: flex-end; gap: 0.6rem; }
+
+.flujo-bars { position: relative; }
+
+.flujo-bar-val {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+}
+
+.flujo-stack {
+  width: 26px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px 4px 0 0;
+  overflow: hidden;
+  min-height: 2px;
+  transition: var(--transition);
+}
+
+.bar-group:hover .flujo-stack { filter: brightness(1.2); }
+
+.flujo-seg-ret { background: var(--seguimiento); width: 100%; }
+.flujo-seg-rec { background: var(--adjudicada); width: 100%; flex: 1; }
+
+/* Detalle por mes */
+.flujo-detalle { display: flex; flex-direction: column; gap: 1rem; }
+
+.flujo-month {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.flujo-month-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.2rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.flujo-month-head h4 { font-size: 0.92rem; font-weight: 700; }
+
+.flujo-month-tot { text-align: right; }
+.flujo-month-tot strong { font-size: 1rem; color: var(--adjudicada); }
+.flujo-month-tot span { display: block; font-size: 0.7rem; color: var(--text-muted); }
+
+.flujo-rows { padding: 0.4rem 0.6rem; }
+
+.flujo-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  transition: var(--transition);
+}
+
+.flujo-row:hover { background: var(--bg-hover); }
+
+.flujo-fecha {
+  flex-shrink: 0;
+  width: 64px;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.flujo-proy {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.flujo-concepto { color: var(--text-secondary); font-weight: 400; }
+
+.flujo-monto {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.flujo-ret {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--seguimiento);
+  background: rgba(253,203,110,0.15);
+  padding: 0.12rem 0.45rem;
+  border-radius: 10px;
+}
+
+/* ── Responsive cobros + flujo ── */
 @media (max-width: 768px) {
-  .view-tabs { padding: 0.75rem 1rem 0; }
-  .cobros-view { padding: 1rem; }
+  .view-tabs { padding: 0.75rem 1rem 0; flex-wrap: wrap; }
+  .cobros-view, .flujo-view { padding: 1rem; }
   .cobros-grid { grid-template-columns: 1fr; }
   .hito-row { flex-wrap: wrap; }
   .pago-dates input { width: 125px; }
   .pay-recibido { width: 100px; }
+  .flujo-stack { width: 18px; }
+  .flujo-row { flex-wrap: wrap; gap: 0.4rem 0.75rem; }
+  .flujo-fecha { width: auto; }
+  .flujo-proy { flex-basis: 100%; order: 3; }
 }

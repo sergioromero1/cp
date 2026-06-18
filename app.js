@@ -14,6 +14,7 @@ const CSV_FILE = 'cotizaciones.csv';
 const LS_KEY = 'cotizaciones_data';
 const PALETTE = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#a29bfe', '#74b9ff'];
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const MESES_FULL = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 const COBRO_LABEL = {
   'sin-cuentas': 'Sin cuenta',
@@ -43,6 +44,7 @@ const modalOverlay = $('#modal-overlay');
 const contextMenu = $('#context-menu');
 const toastContainer = $('#toast-container');
 const cobrosView = $('#cobros-view');
+const flujoView = $('#flujo-view');
 
 // ── Init ──
 document.addEventListener('DOMContentLoaded', async () => {
@@ -252,6 +254,7 @@ function render() {
   renderTable();
   renderMobileCards();
   renderCobros();
+  renderFlujo();
   populateFilterOptions();
   updateFilterUI();
   updateTabBadge();
@@ -861,6 +864,125 @@ function updateTabBadge() {
   badge.style.display = pendientes ? 'inline-flex' : 'none';
 }
 
+// ─────────────────────────────────────────────
+//  Vista Flujo de caja (entradas mensuales = cuentas pagadas)
+// ─────────────────────────────────────────────
+function renderFlujo() {
+  // Recolectar todas las cuentas de cobro pagadas con fecha de pago válida
+  const pagos = [];
+  data.forEach(d => {
+    (d.Pagos || []).forEach(p => {
+      if (!p.pagada || !parseDate(p.pagada)) return;
+      pagos.push({
+        proyecto: d.Proyecto,
+        cliente: d['Razón social'] || d.Cliente || '',
+        concepto: p.concepto,
+        fecha: p.pagada,
+        facturado: valorPago(p),
+        recibido: recibidoPago(p),
+        retencion: retencionPago(p)
+      });
+    });
+  });
+
+  if (!pagos.length) {
+    flujoView.innerHTML = `<div class="empty-state"><div class="icon">📈</div><p>Aún no hay cuentas de cobro pagadas.<br>Cuando registres pagos en la pestaña Cobros, verás aquí el flujo de caja mensual.</p></div>`;
+    return;
+  }
+
+  // Agrupar por mes de pago
+  const meses = {};
+  pagos.forEach(p => {
+    const f = parseDate(p.fecha);
+    const key = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}`;
+    if (!meses[key]) meses[key] = { recibido: 0, facturado: 0, retencion: 0, n: 0, items: [] };
+    const m = meses[key];
+    m.recibido += p.recibido;
+    m.facturado += p.facturado;
+    m.retencion += p.retencion;
+    m.n++;
+    m.items.push(p);
+  });
+
+  const keysAsc = Object.keys(meses).sort();
+  const totalRecibido = pagos.reduce((s, p) => s + p.recibido, 0);
+  const totalRetencion = pagos.reduce((s, p) => s + p.retencion, 0);
+  const promedioMensual = totalRecibido / keysAsc.length;
+  const mejorKey = keysAsc.reduce((a, b) => meses[b].recibido > meses[a].recibido ? b : a, keysAsc[0]);
+
+  const labelMes = (key, full = false) => {
+    const [y, mo] = key.split('-');
+    const idx = parseInt(mo) - 1;
+    return full ? `${MESES_FULL[idx]} ${y}` : `${MESES[idx]} ${y.slice(2)}`;
+  };
+
+  // KPIs del flujo
+  const summary = `
+    <div class="flujo-kpis">
+      <div class="flujo-kpi"><div class="label">Total Recibido</div><div class="value win">$${formatMoney(totalRecibido)}</div><div class="sub">neto en caja · ${pagos.length} pagos</div></div>
+      <div class="flujo-kpi"><div class="label">Retenciones</div><div class="value warn-txt">$${formatMoney(totalRetencion)}</div><div class="sub">descontado del facturado</div></div>
+      <div class="flujo-kpi"><div class="label">Promedio Mensual</div><div class="value">$${formatMoney(promedioMensual)}</div><div class="sub">en ${keysAsc.length} ${keysAsc.length === 1 ? 'mes' : 'meses'} con ingresos</div></div>
+      <div class="flujo-kpi"><div class="label">Mejor Mes</div><div class="value">$${formatMoneyShort(meses[mejorKey].recibido)}</div><div class="sub">${labelMes(mejorKey, true)}</div></div>
+    </div>`;
+
+  // Gráfica de barras apiladas (recibido + retención = facturado) — últimos 12 meses
+  const chartKeys = keysAsc.slice(-12);
+  const maxFact = Math.max(...chartKeys.map(k => meses[k].facturado), 1);
+  const chart = `
+    <div class="insight-card flujo-chart-card">
+      <h3>Entradas mensuales de caja</h3>
+      <div class="bar-chart flujo-bar-chart">
+        ${chartKeys.map(k => {
+          const m = meses[k];
+          const hFact = (m.facturado / maxFact) * 100;
+          const hRet = m.facturado ? (m.retencion / m.facturado) * hFact : 0;
+          const hRec = hFact - hRet;
+          return `<div class="bar-group" title="${labelMes(k, true)}: recibido $${formatMoney(m.recibido)}${m.retencion ? ` · retención $${formatMoney(m.retencion)}` : ''} · ${m.n} pago${m.n > 1 ? 's' : ''}">
+            <div class="flujo-bar-val">$${formatMoneyShort(m.recibido)}</div>
+            <div class="bars flujo-bars">
+              <div class="flujo-stack" style="height:${hFact}%">
+                ${m.retencion ? `<div class="flujo-seg-ret" style="height:${(hRet / hFact) * 100}%"></div>` : ''}
+                <div class="flujo-seg-rec" style="height:${(hRec / hFact) * 100}%"></div>
+              </div>
+            </div>
+            <div class="bar-label">${labelMes(k)}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="chart-legend">
+        <span><i style="background:var(--adjudicada)"></i>Recibido (neto)</span>
+        ${totalRetencion ? '<span><i style="background:var(--seguimiento)"></i>Retención</span>' : ''}
+      </div>
+    </div>`;
+
+  // Detalle por mes (más reciente primero)
+  const detalle = keysAsc.slice().reverse().map(k => {
+    const m = meses[k];
+    const items = m.items.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).map(it => `
+      <div class="flujo-row">
+        <span class="flujo-fecha">${formatDate(it.fecha)}</span>
+        <span class="flujo-proy" title="${esc(it.proyecto)}${it.cliente ? ' · ' + esc(it.cliente) : ''}">${esc(it.proyecto)}${it.concepto ? ` <span class="flujo-concepto">· ${esc(it.concepto)}</span>` : ''}</span>
+        <span class="flujo-monto">
+          <strong>$${formatMoney(it.recibido)}</strong>
+          ${it.retencion ? `<span class="flujo-ret" title="Facturado $${formatMoney(it.facturado)} · retención $${formatMoney(it.retencion)}">ret. $${formatMoneyShort(it.retencion)}</span>` : ''}
+        </span>
+      </div>`).join('');
+    return `
+      <div class="flujo-month">
+        <div class="flujo-month-head">
+          <h4>${labelMes(k, true)}</h4>
+          <div class="flujo-month-tot">
+            <strong>$${formatMoney(m.recibido)}</strong>
+            <span>${m.n} pago${m.n > 1 ? 's' : ''}${m.retencion ? ` · ret. $${formatMoneyShort(m.retencion)}` : ''}</span>
+          </div>
+        </div>
+        <div class="flujo-rows">${items}</div>
+      </div>`;
+  }).join('');
+
+  flujoView.innerHTML = summary + chart + `<div class="flujo-detalle">${detalle}</div>`;
+}
+
 // ── Cambio de vista ──
 function switchView(v) {
   view = v;
@@ -868,6 +990,7 @@ function switchView(v) {
   const cotiz = ['funnel-section', 'insights-grid', 'filter-bar', 'results-bar', 'table-container', 'mobile-cards'];
   cotiz.forEach(id => document.getElementById(id).classList.toggle('view-hidden', v !== 'cotizaciones'));
   cobrosView.classList.toggle('view-hidden', v !== 'cobros');
+  flujoView.classList.toggle('view-hidden', v !== 'flujo');
 }
 
 // ── Populate filter dropdowns ──
