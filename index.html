@@ -12,7 +12,18 @@
 
 <body>
 
-  <!-- ── Header ── --> 
+  <!-- ── Pantalla de ingreso ── -->
+  <div class="auth-screen" id="auth-screen">
+    <div class="auth-card">
+      <div class="logo">C</div>
+      <h1>Cotiza<span>Track</span></h1>
+      <p>Ingresa con tu cuenta de Google para ver y editar tus cotizaciones desde cualquier dispositivo.</p>
+      <button class="btn btn-primary" id="btn-login" disabled>Continuar con Google</button>
+      <p class="auth-status" id="auth-status" role="alert"></p>
+    </div>
+  </div>
+
+  <!-- ── Header ── -->
   <header class="header">
     <div class="header-left">
       <div class="logo">C</div>
@@ -28,6 +39,10 @@
           class="hide-mobile">Importar</span></button>
       <input type="file" id="file-import" accept=".csv" style="display:none">
       <button class="btn btn-primary" id="btn-new">＋ <span class="hide-mobile">Nueva</span></button>
+      <div class="user-chip" id="user-chip">
+        <img id="user-avatar" alt="" referrerpolicy="no-referrer">
+        <button class="btn-icon" id="btn-logout" title="Cerrar sesión" aria-label="Cerrar sesión">⎋</button>
+      </div>
     </div>
   </header>
 
@@ -256,6 +271,7 @@
   <!-- ── Toasts ── -->
   <div class="toast-container" id="toast-container"></div>
 
+  <script type="module" src="cloud.js"></script>
   <script src="app.js"></script>
 </body>
 

@@ -151,6 +151,44 @@ body {
 }
 
 .btn-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ── Sesión (Google) ── */
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--bg-primary);
+}
+body.signed-in .auth-screen { display: none; }
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 2.5rem 2rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+.auth-card h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+.auth-card h1 span { color: var(--accent-light); }
+.auth-card p { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; }
+.auth-card .btn { width: 100%; justify-content: center; margin-top: 0.5rem; }
+.auth-status { color: var(--perdida) !important; font-size: 0.8rem !important; min-height: 1em; }
+
+.user-chip { display: none; align-items: center; gap: 0.5rem; }
+body.signed-in .user-chip { display: flex; }
+.user-chip img { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); }
 
 /* ── Stats / KPIs ── */
 .stats-grid {

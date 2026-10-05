@@ -10,8 +10,7 @@ const DIAS_ALERTA = 7;        // sin seguimiento hace más de N días → alerta
 const DIAS_CRITICO = 14;      // → crítico
 const DIAS_COBRO_ALERTA = 15; // cuenta remitida sin pago hace más de N días
 const DIAS_POR_DEFINIR = 5;   // 'Por definir' sin resolverse hace más de N días
-const CSV_FILE = 'cotizaciones.csv';
-const LS_KEY = 'cotizaciones_data';
+const LS_KEY = 'cotizaciones_data';  // solo para migrar datos de la versión sin nube
 const THEME_KEY = 'cotizaciones_theme';
 const PALETTE = ['#6c5ce7', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#a29bfe', '#74b9ff'];
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -67,34 +66,91 @@ function toggleTheme() {
 applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 
 // ── Init ──
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadData();
-  render();
+document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
+  bindAuth();
+  render();
 });
 
-// ── Data: Load ──
-async function loadData() {
-  const stored = localStorage.getItem(LS_KEY);
-  if (stored) {
-    data = JSON.parse(stored);
-    normalizeData();
-    return;
-  }
-  try {
-    const res = await fetch(CSV_FILE);
-    if (res.ok) {
-      const text = await res.text();
-      data = parseCSV(text);
-      normalizeData();
-      saveData();
-    }
-  } catch (e) {
-    console.log('No CSV found, starting empty.');
+// ─────────────────────────────────────────────
+//  Sesión y sincronización con la nube (ver cloud.js)
+// ─────────────────────────────────────────────
+let currentUser = null;
+let unsubscribeData = null;
+let synced = new Map();   // _id → contenido serializado del último estado conocido en la nube
+let firstSnapshot = true;
+
+function bindAuth() {
+  const status = $('#auth-status');
+  if (!window.cloud) { status.textContent = 'No se pudo cargar Firebase. Revisa tu conexión y recarga.'; return; }
+  if (!cloud.configured) { status.textContent = 'Falta configurar Firebase en firebase-config.js.'; return; }
+
+  $('#btn-login').disabled = false;
+  $('#btn-login').addEventListener('click', async () => {
+    status.textContent = '';
+    try { await cloud.signIn(); }
+    catch (e) { if (e.code !== 'auth/popup-closed-by-user') status.textContent = `No se pudo ingresar: ${e.message}`; }
+  });
+  $('#btn-logout').addEventListener('click', () => {
+    if (confirm('¿Cerrar sesión?')) cloud.signOut();
+  });
+  cloud.onUser(u => u ? startSession(u) : endSession());
+}
+
+function startSession(u) {
+  currentUser = u;
+  document.body.classList.add('signed-in');
+  const avatar = $('#user-avatar');
+  avatar.src = u.photoURL || '';
+  avatar.style.display = u.photoURL ? '' : 'none';
+  $('#user-chip').title = `${u.displayName || ''} · ${u.email}`;
+  firstSnapshot = true;
+  unsubscribeData = cloud.subscribe(applyRemote, e => toast(`Error leyendo datos: ${e.message}`, true));
+}
+
+function endSession() {
+  if (unsubscribeData) unsubscribeData();
+  unsubscribeData = null;
+  currentUser = null;
+  data = [];
+  synced = new Map();
+  document.body.classList.remove('signed-in');
+  closeModal();
+  render();
+}
+
+// Aplica el estado de la nube conservando el orden local (los índices de la UI siguen siendo válidos)
+function applyRemote(records, meta) {
+  const byId = new Map(records.map(r => [r._id, r]));
+  const next = data.filter(d => byId.has(d._id)).map(d => byId.get(d._id));
+  const known = new Set(next.map(d => d._id));
+  records.forEach(r => { if (!known.has(r._id)) next.push(r); });
+  synced = new Map(records.map(r => [r._id, serialize(r)]));
+  data = next;
+  normalizeData();
+  render();
+
+  if (firstSnapshot && !meta.fromCache) {
+    firstSnapshot = false;
+    if (!records.length) offerLocalMigration();
   }
 }
 
-// Garantiza que cada registro tenga su lista de pagos y migra estados antiguos
+// Datos que la versión anterior guardaba solo en este navegador
+function offerLocalMigration() {
+  let local = [];
+  try { local = JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { /* sin datos locales */ }
+  if (!local.length) return;
+  if (!confirm(`Hay ${local.length} cotizaciones guardadas en este navegador. ¿Subirlas a tu cuenta?`)) return;
+  data = local;
+  normalizeData();
+  saveData();
+  render();
+  toast(`${local.length} cotizaciones subidas a tu cuenta`);
+}
+
+// Garantiza que cada registro tenga su lista de pagos y migra valores antiguos.
+// Si cambia la forma de los datos, agrega aquí la migración: se aplica al leer y se guarda en la próxima escritura.
 function normalizeData() {
   data.forEach(d => {
     if (typeof d.Pagos === 'string') d.Pagos = parsePagosStr(d.Pagos);
@@ -104,38 +160,98 @@ function normalizeData() {
   });
 }
 
-// ── Data: Save ──
+// JSON con llaves ordenadas y sin metadatos, para comparar contra la nube
+function serialize(record) {
+  const norm = v => Array.isArray(v) ? v.map(norm)
+    : v && typeof v === 'object' ? Object.keys(v).filter(k => !k.startsWith('_')).sort().reduce((o, k) => (o[k] = norm(v[k]), o), {})
+    : v;
+  return JSON.stringify(norm(record));
+}
+
+// ── Data: Save ── envía a la nube solo los registros que cambiaron o se eliminaron
 function saveData() {
-  localStorage.setItem(LS_KEY, JSON.stringify(data));
+  if (!currentUser) return;
+  const upserts = [];
+  const current = new Set();
+  data.forEach(d => {
+    if (!d._id) d._id = cloud.newId();
+    current.add(d._id);
+    const s = serialize(d);
+    if (synced.get(d._id) !== s) { upserts.push(d); synced.set(d._id, s); }
+  });
+  const deletes = [...synced.keys()].filter(id => !current.has(id));
+  deletes.forEach(id => synced.delete(id));
+  if (!upserts.length && !deletes.length) return;
+  cloud.commit(upserts, deletes).catch(e => toast(`Error guardando en la nube: ${e.message}`, true));
 }
 
 // ─────────────────────────────────────────────
 //  CSV (la columna Pagos se serializa: hitos con '|', campos con '~')
+//  Las columnas que no estén en CSV_COLUMNS también se importan y exportan,
+//  así un campo nuevo agregado en el CSV se conserva sin tocar el código.
+//  La columna ID enlaza cada fila con su registro en la nube: al reimportar
+//  un CSV exportado, las filas con ID se actualizan en lugar de duplicarse.
 // ─────────────────────────────────────────────
+const CSV_COLUMNS = ['Fuente', 'Proyecto', 'Tipo', 'Cliente', 'Razón social', 'Fecha de envío', 'Valor', 'Metraje', 'Observación', 'Estado', 'Fecha de último seguimiento', 'Pagos'];
+const CSV_ID = 'ID';
+
+// Parser con soporte de campos entre comillas (comas, comillas dobles y saltos de línea)
+function parseCSVRows(text) {
+  const rows = [];
+  let row = [], field = '', quoted = false;
+  text = text.replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else field += c;
+    } else if (c === '"' && field === '') quoted = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(v => v.trim()));
+}
+
 function parseCSV(text) {
-  const lines = text.trim().split('\n').map(l => l.replace(/\r$/, ''));
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(',');
-  return lines.slice(1).map(line => {
-    const vals = line.split(',');
+  const rows = parseCSVRows(text);
+  if (rows.length < 2) return [];
+  const headers = rows[0].map(h => h.trim());
+  return rows.slice(1).map(vals => {
     const obj = {};
-    headers.forEach((h, i) => obj[h.trim()] = (vals[i] || '').trim());
+    headers.forEach((h, i) => {
+      if (!h) return;
+      const v = (vals[i] || '').trim();
+      if (h === CSV_ID) { if (v && !v.includes('/')) obj._id = v; }
+      else obj[h] = v;
+    });
     obj.Pagos = parsePagosStr(obj.Pagos || '');
     return obj;
   });
 }
 
+function csvField(v) {
+  v = String(v ?? '');
+  return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
 function toCSV() {
   if (!data.length) return '';
-  const headers = ['Fuente', 'Proyecto', 'Tipo', 'Cliente', 'Razón social', 'Fecha de envío', 'Valor', 'Metraje', 'Observación', 'Estado', 'Fecha de último seguimiento', 'Pagos'];
-  const lines = [headers.join(',')];
+  const extra = [];
+  data.forEach(d => Object.keys(d).forEach(k => {
+    if (!k.startsWith('_') && !CSV_COLUMNS.includes(k) && !extra.includes(k)) extra.push(k);
+  }));
+  const headers = [...CSV_COLUMNS, ...extra];
+  const lines = [[...headers, CSV_ID].map(csvField).join(',')];
   data.forEach(d => {
-    lines.push(headers.map(h => {
-      const v = h === 'Pagos' ? pagosToStr(d.Pagos) : String(d[h] || '');
-      return v.replace(/,/g, ';');
-    }).join(','));
+    const vals = headers.map(h => h === 'Pagos' ? pagosToStr(d.Pagos) : d[h]);
+    lines.push([...vals, d._id].map(csvField).join(','));
   });
-  return lines.join('\n');
+  return lines.join('\r\n');
 }
 
 function parsePagosStr(str) {
@@ -149,7 +265,7 @@ function parsePagosStr(str) {
 function pagosToStr(pagos) {
   if (!Array.isArray(pagos) || !pagos.length) return '';
   return pagos.map(p =>
-    [p.concepto, p.valor, p.remitida, p.pagada, p.recibido].map(v => String(v || '').replace(/[|~,]/g, ' ')).join('~')
+    [p.concepto, p.valor, p.remitida, p.pagada, p.recibido].map(v => String(v || '').replace(/[|~]/g, ' ')).join('~')
   ).join('|');
 }
 
@@ -1415,7 +1531,10 @@ function saveEntry() {
   const proyecto = $('#f-proyecto').value.trim();
   if (!proyecto) { toast('El nombre del proyecto es obligatorio', true); $('#f-proyecto').focus(); return; }
 
+  const idx = parseInt($('#edit-index').value);
+  // Se parte del registro existente para conservar su _id y los campos que el formulario no muestra
   const entry = {
+    ...(idx >= 0 ? data[idx] : {}),
     Fuente: $('#f-fuente').value,
     Proyecto: proyecto,
     Tipo: $('#f-tipo').value,
@@ -1430,7 +1549,6 @@ function saveEntry() {
     Pagos: modalPagos.filter(p => (p.concepto || '').trim() || valorPago(p))
   };
 
-  const idx = parseInt($('#edit-index').value);
   if (idx >= 0) {
     data[idx] = entry;
     toast('Cotización actualizada');
@@ -1477,28 +1595,35 @@ function exportCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'cotizaciones.csv';
+  a.download = `cotizaciones_${hoy()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   toast('CSV exportado');
 }
 
-// ── Import CSV ──
+// ── Import CSV ── el archivo reemplaza los datos de la cuenta; las filas con ID actualizan su registro
 function importCSV(e) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => {
     const imported = parseCSV(ev.target.result);
-    if (imported.length) {
-      data = imported;
-      normalizeData();
-      saveData();
-      render();
-      toast(`${imported.length} cotizaciones importadas`);
-    } else {
-      toast('No se encontraron datos en el archivo', true);
-    }
+    if (!imported.length) { toast('No se encontraron datos en el archivo', true); return; }
+    // Una fila duplicada (mismo ID) se trata como registro nuevo
+    const ids = new Set();
+    imported.forEach(d => { if (ids.has(d._id)) delete d._id; else if (d._id) ids.add(d._id); });
+    const updated = data.filter(d => ids.has(d._id)).length;
+    const removed = data.length - updated;
+    const created = imported.length - updated;
+    const msg = `Importar ${file.name}:\n\n` +
+      `• ${updated} cotizaciones se actualizan\n• ${created} se crean\n• ${removed} que no están en el archivo se eliminan\n\n` +
+      '¿Continuar?';
+    if (data.length && !confirm(msg)) return;
+    data = imported;
+    normalizeData();
+    saveData();
+    render();
+    toast(`${imported.length} cotizaciones importadas`);
   };
   reader.readAsText(file, 'UTF-8');
   e.target.value = '';
