@@ -32,6 +32,9 @@ let view = 'cotizaciones';  // 'cotizaciones' | 'cobros'
 let cobroFilter = '';       // '' | 'sin-cuentas' | 'por-remitir' | 'en-cobro' | 'cobrado'
 let modalPagos = [];        // copia de trabajo de los hitos en el modal
 let payingPago = null;      // 'idx:pidx' del hito cuyo pago se está confirmando (input de valor recibido)
+let cobroSort = 'pendientes'; // orden de la vista Cobros: 'pendientes' | 'adj-desc' | 'adj-asc' | 'saldo'
+
+const F_ADJ = 'Fecha de adjudicación';
 
 // ── DOM refs ──
 const $ = (s) => document.querySelector(s);
@@ -192,7 +195,7 @@ function saveData() {
 //  La columna ID enlaza cada fila con su registro en la nube: al reimportar
 //  un CSV exportado, las filas con ID se actualizan en lugar de duplicarse.
 // ─────────────────────────────────────────────
-const CSV_COLUMNS = ['Fuente', 'Proyecto', 'Tipo', 'Cliente', 'Razón social', 'Fecha de envío', 'Valor', 'Metraje', 'Observación', 'Estado', 'Fecha de último seguimiento', 'Pagos'];
+const CSV_COLUMNS = ['Fuente', 'Proyecto', 'Tipo', 'Cliente', 'Razón social', 'Fecha de envío', 'Valor', 'Metraje', 'Observación', 'Estado', 'Fecha de último seguimiento', 'Fecha de adjudicación', 'Pagos'];
 const CSV_ID = 'ID';
 
 // Parser con soporte de campos entre comillas (comas, comillas dobles y saltos de línea)
@@ -373,12 +376,15 @@ function cobroResumen(d) {
   });
   const retenciones = Math.max(cobrado - recibido, 0);
   const diasPromedio = nConTiempo ? Math.round(sumDias / nConTiempo) : null;
+  // Ejecutado = facturado (cuentas remitidas o pagadas); el proyecto está ejecutado cuando se facturó su valor total
+  const facturado = cobrado + remitido;
+  const porEjecutar = Math.max(total - facturado, 0);
   let estado;
   if (!pagos.length) estado = 'sin-cuentas';
   else if (nPagados === pagos.length) estado = 'cobrado';
   else if (remitido > 0) estado = 'en-cobro';
   else estado = 'por-remitir';
-  return { pagos, total, cobrado, recibido, retenciones, remitido, porRemitir, nPagados, nHitos: pagos.length, estado, diasPromedio };
+  return { pagos, total, cobrado, recibido, retenciones, remitido, porRemitir, facturado, porEjecutar, nPagados, nHitos: pagos.length, estado, diasPromedio };
 }
 
 // ── Render everything ──
@@ -418,14 +424,20 @@ function renderStats() {
   const decididas = adjudicadas.length + perdidas.length;
   const tasaExito = decididas > 0 ? ((adjudicadas.length / decididas) * 100).toFixed(0) : '—';
 
-  let cobrado = 0, remitido = 0, retenciones = 0;
+  // Adjudicado = cobrado + por cobrar (facturado sin pagar) + por ejecutar (sin facturar)
+  let cobrado = 0, remitido = 0, retenciones = 0, porEjecutar = 0, nRemitidas = 0, enEjecucion = 0;
   adjudicadas.forEach(d => {
     const r = cobroResumen(d);
     cobrado += r.cobrado;
     remitido += r.remitido;
     retenciones += r.retenciones;
+    porEjecutar += r.porEjecutar;
+    nRemitidas += r.pagos.filter(p => pagoEstado(p) === 'remitida').length;
+    if (r.porEjecutar > 0) enEjecucion++;
   });
-  const porCobrar = Math.max(valorAdj - cobrado, 0);
+  const porCobrar = remitido;
+  const pendienteTotal = porCobrar + porEjecutar;
+  const nPendientes = adjudicadas.filter(d => cobroResumen(d).estado !== 'cobrado').length;
 
   statsGrid.innerHTML = `
     <div class="stat-card">
@@ -441,7 +453,17 @@ function renderStats() {
     <div class="stat-card clickable" data-action="cobros" title="Clic para ver cobros">
       <div class="label">Por Cobrar</div>
       <div class="value ${porCobrar ? 'alert' : ''}">$${formatMoney(porCobrar)}</div>
-      <div class="sub">${remitido ? '$' + formatMoneyShort(remitido) + ' remitido en espera' : 'cartera pendiente'}</div>
+      <div class="sub">${nRemitidas ? `${nRemitidas} cuenta${nRemitidas > 1 ? 's' : ''} remitida${nRemitidas > 1 ? 's' : ''} sin pagar` : 'facturado y sin pagar'}</div>
+    </div>
+    <div class="stat-card clickable" data-action="cobros" title="Clic para ver cobros">
+      <div class="label">Por Ejecutar</div>
+      <div class="value accent">$${formatMoney(porEjecutar)}</div>
+      <div class="sub">${enEjecucion ? `${enEjecucion} proyecto${enEjecucion > 1 ? 's' : ''} sin facturar completo` : 'todo lo adjudicado está facturado'}</div>
+    </div>
+    <div class="stat-card clickable" data-action="cobros" title="Clic para ver cobros">
+      <div class="label">Pendiente Total</div>
+      <div class="value ${pendienteTotal ? 'alert' : ''}">$${formatMoney(pendienteTotal)}</div>
+      <div class="sub">por cobrar + por ejecutar · ${nPendientes} proyecto${nPendientes === 1 ? '' : 's'}</div>
     </div>
     <div class="stat-card clickable" data-action="cobros" title="Clic para ver cobros">
       <div class="label">Cobrado</div>
@@ -726,20 +748,20 @@ function renderChartCartera() {
   const valorAdj = adjudicadas.reduce((s, d) => s + valor(d), 0);
   if (!valorAdj) { el.innerHTML = '<div class="chart-empty">Aún no hay valor adjudicado</div>'; return; }
 
-  let cobrado = 0, remitido = 0, retenciones = 0;
+  let cobrado = 0, remitido = 0, retenciones = 0, porEjecutar = 0;
   adjudicadas.forEach(d => {
     const r = cobroResumen(d);
     cobrado += r.cobrado;
     remitido += r.remitido;
     retenciones += r.retenciones;
+    porEjecutar += r.porEjecutar;
   });
-  const porFacturar = Math.max(valorAdj - cobrado - remitido, 0);
-  const total = cobrado + remitido + porFacturar || 1;
+  const total = cobrado + remitido + porEjecutar || 1;
 
   const segs = [
     { label: 'Cobrado', valor: cobrado, color: 'var(--adjudicada)' },
-    { label: 'Remitido en espera', valor: remitido, color: 'var(--enviada)' },
-    { label: 'Por facturar', valor: porFacturar, color: 'var(--por-definir)' }
+    { label: 'Por cobrar (remitido)', valor: remitido, color: 'var(--enviada)' },
+    { label: 'Por ejecutar (sin facturar)', valor: porEjecutar, color: 'var(--por-definir)' }
   ];
 
   el.innerHTML = `
@@ -902,6 +924,27 @@ function renderMobileCards() {
 // ─────────────────────────────────────────────
 //  Vista Cobros
 // ─────────────────────────────────────────────
+// Fecha de adjudicación registrada; si falta, se estima con la primera cuenta remitida o la fecha de envío
+function fechaAdjudicacion(d) {
+  if (parseDate(d[F_ADJ])) return { fecha: d[F_ADJ], estimada: false };
+  const fechas = (d.Pagos || []).flatMap(p => [p.remitida, p.pagada]).filter(f => parseDate(f)).sort();
+  const fecha = fechas[0] || (parseDate(d['Fecha de envío']) ? d['Fecha de envío'] : '');
+  return { fecha, estimada: true };
+}
+
+function ordenarCobros(lista) {
+  const adj = d => fechaAdjudicacion(d).fecha || '';
+  const porFechaDesc = (a, b) => adj(b).localeCompare(adj(a));
+  const saldo = d => { const r = cobroResumen(d); return r.total - r.cobrado; };
+  const orden = {
+    'pendientes': (a, b) => (cobroResumen(a).estado === 'cobrado') - (cobroResumen(b).estado === 'cobrado') || porFechaDesc(a, b),
+    'adj-desc': porFechaDesc,
+    'adj-asc': (a, b) => porFechaDesc(b, a),
+    'saldo': (a, b) => saldo(b) - saldo(a) || porFechaDesc(a, b)
+  }[cobroSort] || porFechaDesc;
+  return [...lista].sort(orden);
+}
+
 function renderCobros() {
   const adjudicadas = data.filter(d => d.Estado === 'Adjudicada');
   if (!adjudicadas.length) {
@@ -917,11 +960,26 @@ function renderCobros() {
     `<button class="chip ${cobroFilter === k ? 'active' : ''}" data-cfilter="${k}">${k ? COBRO_LABEL[k] : 'Todos'} <span>${counts[k]}</span></button>`
   ).join('');
 
-  const visibles = adjudicadas.filter(d => !cobroFilter || cobroResumen(d).estado === cobroFilter);
+  const visibles = ordenarCobros(adjudicadas.filter(d => !cobroFilter || cobroResumen(d).estado === cobroFilter));
+  const agrupar = cobroSort === 'pendientes';
+  const nPendientes = visibles.filter(d => cobroResumen(d).estado !== 'cobrado').length;
 
-  const cards = visibles.map(d => {
+  const cards = visibles.map((d, i) => {
     const idx = data.indexOf(d);
     const r = cobroResumen(d);
+    const adj = fechaAdjudicacion(d);
+    const adjHtml = adj.fecha
+      ? `<span class="cobro-adj ${adj.estimada ? 'estimada' : ''}" title="${adj.estimada ? 'Fecha estimada: registra la fecha de adjudicación en el proyecto' : 'Fecha de adjudicación'}">📅 ${adj.estimada ? '~' : ''}${formatDate(adj.fecha)}</span>`
+      : '';
+    const pendiente = r.estado !== 'cobrado';
+    const grupo = !agrupar ? ''
+      : i === 0 && pendiente ? `<div class="cobros-grupo">Faltan por cobrar <span>${nPendientes}</span></div>`
+      : !pendiente && (i === 0 || cobroResumen(visibles[i - 1]).estado !== 'cobrado') ? `<div class="cobros-grupo">Cobrados <span>${visibles.length - nPendientes}</span></div>`
+      : '';
+    const saldos = [
+      r.remitido ? `<span class="saldo cobrar">Por cobrar $${formatMoneyShort(r.remitido)}</span>` : '',
+      r.porEjecutar ? `<span class="saldo ejecutar">Por ejecutar $${formatMoneyShort(r.porEjecutar)}</span>` : ''
+    ].join('');
     const pct = r.total ? Math.min(Math.round((r.cobrado / r.total) * 100), 100) : (r.nHitos && r.nPagados === r.nHitos ? 100 : 0);
 
     const hitos = r.pagos.map((p, i) => {
@@ -960,11 +1018,11 @@ function renderCobros() {
 
     const diff = r.total - (r.cobrado + r.remitido + r.porRemitir);
 
-    return `<div class="cobro-card estado-${r.estado}">
+    return `${grupo}<div class="cobro-card estado-${r.estado}">
       <div class="cobro-head" data-idx="${idx}" title="Clic para editar el proyecto">
         <div class="cobro-head-info">
           <h4>${esc(d.Proyecto)}</h4>
-          <span class="cobro-cliente">${esc(d['Razón social'] || d.Cliente) || '—'}</span>
+          <span class="cobro-cliente">${esc(d['Razón social'] || d.Cliente) || '—'}${adjHtml}</span>
         </div>
         <div class="cobro-head-right">
           <span class="cobro-estado-chip ${r.estado}">${COBRO_LABEL[r.estado]}</span>
@@ -977,6 +1035,7 @@ function renderCobros() {
           <div class="cobro-fill-remitido" style="width:${r.total ? Math.min(((r.cobrado + r.remitido) / r.total) * 100, 100) : 0}%"></div>
         </div>
         <span class="cobro-pct">${pct}% cobrado · $${formatMoneyShort(r.cobrado)} de $${formatMoneyShort(r.total)}${r.retenciones ? ` · neto recibido $${formatMoneyShort(r.recibido)} <span class="ret-nota">(ret. $${formatMoneyShort(r.retenciones)})</span>` : ''}${r.diasPromedio !== null ? ` · <span class="tiempo-nota">⏱ ${r.nPagados > 1 ? 'prom. ' : ''}${r.diasPromedio === 0 ? 'pago mismo día' : r.diasPromedio + 'd en cobrar'}</span>` : ''}</span>
+        ${saldos ? `<div class="cobro-saldos">${saldos}</div>` : ''}
       </div>
       <div class="cobro-hitos">
         ${hitos || '<div class="hito-empty">Sin cuentas de cobro registradas</div>'}
@@ -990,8 +1049,14 @@ function renderCobros() {
     </div>`;
   }).join('');
 
+  const sortOpts = { 'pendientes': 'Faltan por cobrar primero', 'adj-desc': 'Adjudicación: más recientes', 'adj-asc': 'Adjudicación: más antiguas', 'saldo': 'Mayor saldo pendiente' };
   cobrosView.innerHTML = `
-    <div class="cobro-filters">${chips}</div>
+    <div class="cobro-toolbar">
+      <div class="cobro-filters">${chips}</div>
+      <select class="filter-select" id="cobro-sort" aria-label="Ordenar proyectos">
+        ${Object.entries(sortOpts).map(([k, l]) => `<option value="${k}" ${cobroSort === k ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+    </div>
     <div class="cobros-grid">${cards || '<div class="empty-state"><div class="icon">💰</div><p>Ningún proyecto en este estado</p></div>'}</div>`;
 }
 
@@ -1268,6 +1333,14 @@ function bindEvents() {
   });
 
   $('#f-valor').addEventListener('input', updatePagosSummary);
+  // Al adjudicar desde el formulario se propone la fecha de hoy (editable)
+  $('#f-estado').addEventListener('change', e => {
+    if (e.target.value === 'Adjudicada' && !$('#f-adjudicacion').value) $('#f-adjudicacion').value = hoy();
+  });
+
+  cobrosView.addEventListener('change', e => {
+    if (e.target.id === 'cobro-sort') { cobroSort = e.target.value; renderCobros(); }
+  });
 
   // Filters
   $('#search-input').addEventListener('input', renderList);
@@ -1407,6 +1480,7 @@ function bindEvents() {
         data[contextIdx].Estado = btn.dataset.status;
         // al cambiar estado registramos contacto de hoy
         data[contextIdx]['Fecha de último seguimiento'] = hoy();
+        if (btn.dataset.status === 'Adjudicada' && !data[contextIdx][F_ADJ]) data[contextIdx][F_ADJ] = hoy();
         saveData(); render();
         toast(`Estado actualizado a "${btn.dataset.status}"`);
       }
@@ -1464,6 +1538,7 @@ function openModal(idx = -1) {
     $('#f-fecha').value = d['Fecha de envío'] || '';
     $('#f-seguimiento').value = d['Fecha de último seguimiento'] || '';
     $('#f-estado').value = d.Estado || 'Por definir';
+    $('#f-adjudicacion').value = d[F_ADJ] || '';
     $('#f-valor').value = d.Valor || '';
     $('#f-metraje').value = d.Metraje || '';
     $('#f-obs').value = d['Observación'] || '';
@@ -1473,6 +1548,7 @@ function openModal(idx = -1) {
     $('#f-fuente').value = 'Referido';
     $('#f-tipo').value = 'Peritaje Estructural';
     $('#f-estado').value = 'Por definir';
+    $('#f-adjudicacion').value = '';
     $('#f-fecha').value = hoy();
     $('#f-seguimiento').value = '';
     modalPagos = [];
@@ -1548,6 +1624,7 @@ function saveEntry() {
     'Observación': $('#f-obs').value.trim(),
     Estado: $('#f-estado').value,
     'Fecha de último seguimiento': $('#f-seguimiento').value,
+    [F_ADJ]: $('#f-adjudicacion').value,
     Pagos: modalPagos.filter(p => (p.concepto || '').trim() || valorPago(p))
   };
 
