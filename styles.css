@@ -195,7 +195,7 @@ body.signed-in .user-chip { display: flex; }
 /* ── Stats / KPIs ── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* 8 KPIs en dos filas de 4 */
   gap: 1rem;
   padding: 1.5rem 2rem 0.5rem;
 }
@@ -671,7 +671,7 @@ body.signed-in .user-chip { display: flex; }
 }
 
 .data-table thead th {
-  padding: 0.85rem 1rem;
+  padding: 0.85rem 0.65rem;
   text-align: left;
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -697,7 +697,7 @@ body.signed-in .user-chip { display: flex; }
 .data-table tbody tr:hover { background: var(--bg-hover); }
 
 .data-table tbody td {
-  padding: 0.8rem 1rem;
+  padding: 0.8rem 0.65rem;
   font-size: 0.85rem;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -709,6 +709,12 @@ body.signed-in .user-chip { display: flex; }
 .data-table tbody tr:last-child td { border-bottom: none; }
 
 .cell-proyecto { font-weight: 600; }
+/* Columnas de texto largo: se parten en líneas para que la tabla quepa sin desplazamiento lateral */
+.data-table tbody td.wrap { white-space: normal; max-width: none; min-width: 120px; line-height: 1.35; }
+.data-table tbody td.cell-proyecto { min-width: 180px; }
+.data-table tbody td.cell-estado { white-space: normal; max-width: none; min-width: 120px; }
+.cell-estado .status-badge { white-space: normal; line-height: 1.25; border-radius: 12px; }
+.data-table thead th.th-acciones { width: 1%; cursor: default; }
 
 .obs-dot {
   color: var(--accent-light);
@@ -1285,7 +1291,8 @@ body.signed-in .user-chip { display: flex; }
 .hito-chip.remitida.vencida { background: rgba(214,48,49,0.16); color: var(--perdida); }
 .hito-chip.pagada { background: rgba(0,184,148,0.15); color: var(--adjudicada); }
 
-.hito-actions { display: inline-flex; gap: 0.3rem; flex-shrink: 0; }
+.hito-actions { display: inline-flex; gap: 0.3rem; flex-shrink: 0; margin-left: auto; }
+.hito-row { flex-wrap: wrap; }
 
 .btn-mini {
   padding: 0.3rem 0.6rem;
@@ -1689,4 +1696,17 @@ body.signed-in .user-chip { display: flex; }
 @media (max-width: 480px) {
   .cobro-toolbar .filter-select { width: 100%; }
   .stats-grid .stat-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* Tabla en pantallas de laptop: se ocultan columnas secundarias (siguen en el formulario y los filtros).
+   Columnas: 1 Proyecto · 2 Cliente · 3 Razón social · 4 Tipo · 5 Fuente · 6 Envío · 7 Últ. seguimiento
+             8 Valor · 9 m² · 10 Estado · 11 Cobro · 12 Acciones */
+@media (max-width: 1366px) {
+  .data-table th:nth-child(5), .data-table td:nth-child(5),
+  .data-table th:nth-child(9), .data-table td:nth-child(9) { display: none; }
+}
+@media (max-width: 1100px) {
+  .data-table th:nth-child(2), .data-table td:nth-child(2),
+  .data-table th:nth-child(6), .data-table td:nth-child(6) { display: none; }
+  .data-table tbody td.cell-proyecto { min-width: 140px; }
 }

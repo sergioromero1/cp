@@ -877,16 +877,16 @@ function renderTable() {
     const css = ESTADO_CSS[d.Estado] || '';
     const obs = d['Observación'] ? ` title="${esc(d['Observación'])}"` : '';
     return `<tr data-idx="${idx}">
-      <td class="cell-proyecto"${obs}><span>${esc(d.Proyecto)}</span>${d['Observación'] ? '<span class="obs-dot" title="Tiene observación">●</span>' : ''}</td>
-      <td title="${esc(d.Cliente)}">${esc(d.Cliente) || '—'}</td>
-      <td title="${esc(d['Razón social'])}">${esc(d['Razón social']) || '—'}</td>
-      <td>${esc(d.Tipo)}</td>
+      <td class="cell-proyecto wrap"${obs}><span>${esc(d.Proyecto)}</span>${d['Observación'] ? '<span class="obs-dot" title="Tiene observación">●</span>' : ''}</td>
+      <td class="wrap" title="${esc(d.Cliente)}">${esc(d.Cliente) || '—'}</td>
+      <td class="wrap" title="${esc(d['Razón social'])}">${esc(d['Razón social']) || '—'}</td>
+      <td class="wrap">${esc(d.Tipo)}</td>
       <td>${esc(d.Fuente)}</td>
       <td>${formatDate(d['Fecha de envío'])}</td>
       <td>${seguimientoCell(d)}</td>
       <td class="num">${valor(d) ? '$' + formatMoney(valor(d)) : '—'}</td>
       <td class="num">${parseFloat(d.Metraje) ? d.Metraje : '—'}</td>
-      <td><span class="status-badge ${css}"><span class="dot"></span>${esc(d.Estado)}</span></td>
+      <td class="cell-estado"><span class="status-badge ${css}"><span class="dot"></span>${esc(d.Estado)}</span></td>
       <td>${cobroCell(d)}</td>
       <td><button class="btn-icon btn-status" data-idx="${idx}" title="Cambiar estado">⋮</button></td>
     </tr>`;
