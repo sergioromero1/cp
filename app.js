@@ -3,8 +3,8 @@
 //  Ciclo de vida: cotización → adjudicación → cuentas de cobro → recaudo
 // ─────────────────────────────────────────────
 
-const ESTADOS = ['Por definir', 'Enviada', 'En seguimiento', 'Adjudicada', 'Sin respuesta definitiva'];
-const ESTADO_CSS = { 'Por definir': 'por-definir', 'Enviada': 'enviada', 'En seguimiento': 'seguimiento', 'Adjudicada': 'adjudicada', 'Sin respuesta definitiva': 'perdida' };
+const ESTADOS = ['Por definir', 'Enviada', 'En seguimiento', 'Adjudicada', 'Sin respuesta definitiva', 'Desistida'];
+const ESTADO_CSS = { 'Por definir': 'por-definir', 'Enviada': 'enviada', 'En seguimiento': 'seguimiento', 'Adjudicada': 'adjudicada', 'Sin respuesta definitiva': 'perdida', 'Desistida': 'desistida' };
 const ESTADOS_ACTIVOS = ['Por definir', 'Enviada', 'En seguimiento'];
 const DIAS_ALERTA = 7;        // sin seguimiento hace más de N días → alerta
 const DIAS_CRITICO = 14;      // → crítico
@@ -409,6 +409,8 @@ function renderStats() {
   const abiertas = data.filter(d => ESTADOS_ACTIVOS.includes(d.Estado));
   const adjudicadas = data.filter(d => d.Estado === 'Adjudicada');
   const perdidas = data.filter(d => d.Estado === 'Sin respuesta definitiva');
+  // Las desistidas no cuentan en la tasa de éxito: el proyecto no se hizo, no se perdió frente a otro
+  const desistidas = data.filter(d => d.Estado === 'Desistida');
   const pendientes = data.filter(requiereSeguimiento);
 
   const valorPipeline = abiertas.reduce((s, d) => s + valor(d), 0);
@@ -451,7 +453,7 @@ function renderStats() {
     <div class="stat-card">
       <div class="label">Tasa de Éxito</div>
       <div class="value">${tasaExito}${tasaExito !== '—' ? '%' : ''}</div>
-      <div class="sub">${adjudicadas.length} ganadas / ${perdidas.length} sin respuesta</div>
+      <div class="sub">${adjudicadas.length} ganadas / ${perdidas.length} sin respuesta${desistidas.length ? ` · ${desistidas.length} desistidas` : ''}</div>
     </div>
     <div class="stat-card clickable ${pendientes.length ? 'warn' : ''} ${followUpFilter ? 'active' : ''}" data-action="followup" title="Clic para filtrar">
       <div class="label">Req. Seguimiento</div>

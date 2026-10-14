@@ -18,6 +18,7 @@
   --seguimiento: #fdcb6e;
   --adjudicada: #00b894;
   --perdida: #d63031;
+  --desistida: #b07aa1;
   --warn: #e17055;
   --header-accent: #1e1b3a;
   --shadow: 0 4px 24px rgba(0,0,0,0.3);
@@ -43,6 +44,7 @@
   --seguimiento: #c98a06;
   --adjudicada: #03916f;
   --perdida: #cf2f30;
+  --desistida: #94588a;
   --warn: #d2552f;
   --header-accent: #ece9fb;
   --shadow: 0 6px 24px rgba(46,52,80,0.1);
@@ -314,6 +316,7 @@ body.signed-in .user-chip { display: flex; }
 .funnel-segment.seguimiento { background: var(--seguimiento); color: #1a1d27; }
 .funnel-segment.adjudicada { background: var(--adjudicada); }
 .funnel-segment.perdida { background: var(--perdida); }
+.funnel-segment.desistida { background: var(--desistida); }
 
 .funnel-labels {
   display: flex;
@@ -758,6 +761,8 @@ body.signed-in .user-chip { display: flex; }
 .status-badge.adjudicada .dot { background: var(--adjudicada); }
 .status-badge.perdida { background: rgba(214,48,49,0.15); color: var(--perdida); }
 .status-badge.perdida .dot { background: var(--perdida); }
+.status-badge.desistida { background: rgba(176,122,161,0.15); color: var(--desistida); }
+.status-badge.desistida .dot { background: var(--desistida); }
 
 /* ── Modal ── */
 .modal-overlay {
