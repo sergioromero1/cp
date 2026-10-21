@@ -380,9 +380,10 @@ function cobroResumen(d) {
   const facturado = cobrado + remitido;
   const porEjecutar = Math.max(total - facturado, 0);
   let estado;
+  // Cobrado solo cuando se pagó el valor total del proyecto, no basta con que las cuentas registradas estén pagadas
   if (!pagos.length) estado = 'sin-cuentas';
-  else if (nPagados === pagos.length) estado = 'cobrado';
   else if (remitido > 0) estado = 'en-cobro';
+  else if (nPagados === pagos.length && cobrado >= total) estado = 'cobrado';
   else estado = 'por-remitir';
   return { pagos, total, cobrado, recibido, retenciones, remitido, porRemitir, facturado, porEjecutar, nPagados, nHitos: pagos.length, estado, diasPromedio };
 }
